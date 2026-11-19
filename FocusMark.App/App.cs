@@ -19,6 +19,8 @@ namespace FocusMark
     {
         const int Hotkey = 1;
         readonly NoteStore store = new NoteStore(Path.Combine(Environment.GetEnvironmentVariable("LOCALAPPDATA"), "FocusMark"));
+        string activeTheme;
+        ThemeProfile theme = ThemeProfile.Dark;
         Window panel;
         IntPtr handle;
         TextBox input;
@@ -53,6 +55,7 @@ namespace FocusMark
             store.Load(out warning);
             using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("Panel.xaml"))
                 panel = (Window)XamlReader.Load(stream);
+            string themeError = LoadTheme(store.Current.Theme, false);
             handle = new WindowInteropHelper(panel).EnsureHandle();
             HwndSource.FromHwnd(handle).AddHook(Messages);
             int corner = 3; // DWMWCP_ROUNDSMALL
@@ -100,6 +103,10 @@ namespace FocusMark
                 if (TryCommit(delegate { store.SetOptions(store.Current.Bottom, !store.Current.HidePreview); }))
                 { mask.Checked = store.Current.HidePreview; UpdatePreview(); }
             };
+            var appearance = new Forms.ToolStripMenuItem("外观");
+            appearance.DropDownItems.Add("主题");
+            appearance.DropDownOpening += delegate { PopulateThemes(appearance); };
+            menu.Items.Add(appearance);
             menu.Items.Add(bottom);
             menu.Items.Add(mask);
             menu.Items.Add("退出", null, delegate { exiting = true; Shutdown(); });
@@ -110,8 +117,59 @@ namespace FocusMark
             tray.DoubleClick += delegate { Edit(IntPtr.Zero); };
             registered = RegisterHotKey(handle, Hotkey, 0x4003, 0x4A); // NOREPEAT | ALT | CONTROL
             if (note != null) ShowView(View.Pill);
+            if (themeError != null) Alert(themeError + "\n已使用默认深色。请在托盘的“外观”菜单重新选择。");
             if (warning != null) Alert(warning);
             if (!registered) Alert("Ctrl+Alt+J 注册失败，可能已被占用。请从托盘选择“打开”。");
+        }
+
+        string LoadTheme(string id, bool persist)
+        {
+            try
+            {
+                var next = ThemeProfile.Read(id);
+                if (persist && store.Current.Theme != id) store.SetTheme(id);
+                activeTheme = id;
+                theme = next;
+                theme.Apply(panel.Resources);
+                if (view == View.Pill) UpdatePreview();
+                return null;
+            }
+            catch (Exception e)
+            {
+                if (!(e is IOException || e is InvalidDataException || e is UnauthorizedAccessException)) throw;
+                if (!persist) theme.Apply(panel.Resources);
+                return "无法应用主题。\n" + e.Message;
+            }
+        }
+
+        void PopulateThemes(Forms.ToolStripMenuItem menu)
+        {
+            while (menu.DropDownItems.Count > 0) menu.DropDownItems[0].Dispose();
+            Action<string,string> add = (label, id) => {
+                var item = new Forms.ToolStripMenuItem(label) { Checked = id == activeTheme };
+                item.Click += delegate { string error = LoadTheme(id, true); if (error != null) Alert(error); };
+                menu.DropDownItems.Add(item);
+            };
+            add("深色 · 薄荷", null);
+            add("浅色 · 纸白", "light");
+            try { foreach (var id in ThemeProfile.Installed()) add(id, id); }
+            catch (IOException e) { menu.DropDownItems.Add(e.Message).Enabled = false; }
+            catch (UnauthorizedAccessException e) { menu.DropDownItems.Add(e.Message).Enabled = false; }
+            menu.DropDownItems.Add(new Forms.ToolStripSeparator());
+            menu.DropDownItems.Add("打开主题目录与示例", null, delegate {
+                try
+                {
+                    Directory.CreateDirectory(ThemeProfile.Folder);
+                    string example = Path.Combine(ThemeProfile.Folder, "amber.json");
+                    if (!File.Exists(example))
+                        using (var dest = new FileStream(example, FileMode.CreateNew, FileAccess.Write))
+                        using (var src = Assembly.GetExecutingAssembly().GetManifestResourceStream("amber.json")) src.CopyTo(dest);
+                    System.Diagnostics.Process.Start(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe"), "\"" + ThemeProfile.Folder + "\"");
+                }
+                catch (IOException e) { Alert(e.Message); }
+                catch (UnauthorizedAccessException e) { Alert(e.Message); }
+                catch (System.ComponentModel.Win32Exception e) { Alert(e.Message); }
+            });
         }
 
         IntPtr Messages(IntPtr h, int msg, IntPtr w, IntPtr l, ref bool handled)
@@ -225,7 +283,7 @@ namespace FocusMark
         void UpdatePreview()
         {
             Find<TextBlock>("Preview").Text = store.Current.HidePreview ? "查看备注" : note;
-            if (view == View.Pill) panel.Width = store.Current.HidePreview ? 100 : 216;
+            if (view == View.Pill) panel.Width = store.Current.HidePreview ? 100 : theme.Width;
         }
 
         void ShowView(View next)

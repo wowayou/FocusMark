@@ -13,10 +13,12 @@ namespace FocusMark
         [DataMember(Name="bottom", EmitDefaultValue=false)] public bool Bottom { get; private set; }
         [DataMember(Name="hidePreview", EmitDefaultValue=false)] public bool HidePreview { get; private set; }
 
-        internal Note(string text = null, bool bottom = false, bool hidePreview = false)
+        [DataMember(Name="theme", EmitDefaultValue=false)] public string Theme { get; private set; }
+        internal Note(string text = null, bool bottom = false, bool hidePreview = false, string theme = null)
         {
             Text = text;
             Bottom = bottom;
+            Theme = theme;
             HidePreview = hidePreview;
         }
 
@@ -61,7 +63,7 @@ namespace FocusMark
                 {
                     if (stream.Length > 64 * 1024) throw new SerializationException();
                     var note = (Note)json.ReadObject(stream);
-                    if (note == null || (note.Text == null ? !note.Bottom && !note.HidePreview : !Note.Valid(note.Text)))
+                    if (note == null || (note.Text == null ? !note.Bottom && !note.HidePreview && note.Theme == null : !Note.Valid(note.Text)))
                         throw new SerializationException();
                     Current = note;
                     return Current.Text;
@@ -82,19 +84,24 @@ namespace FocusMark
         internal void Save(string text)
         {
             if (!Note.Valid(text)) throw new ArgumentException("备注应为 1–200 字。");
-            Commit(new Note(text, Current.Bottom, Current.HidePreview));
+            Commit(new Note(text, Current.Bottom, Current.HidePreview, Current.Theme));
         }
 
-        internal void Clear() { Commit(new Note(null, Current.Bottom, Current.HidePreview)); }
+        internal void Clear() { Commit(new Note(null, Current.Bottom, Current.HidePreview, Current.Theme)); }
 
         internal void SetOptions(bool bottom, bool hidePreview)
         {
-            Commit(new Note(Current.Text, bottom, hidePreview));
+            Commit(new Note(Current.Text, bottom, hidePreview, Current.Theme));
+        }
+
+        internal void SetTheme(string theme)
+        {
+            Commit(new Note(Current.Text, Current.Bottom, Current.HidePreview, theme));
         }
 
         void Commit(Note next)
         {
-            if (next.Text == null && !next.Bottom && !next.HidePreview)
+            if (next.Text == null && !next.Bottom && !next.HidePreview && next.Theme == null)
             {
                 try
                 {

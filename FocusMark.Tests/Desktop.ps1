@@ -14,7 +14,19 @@ public static class Desktop {
  [DllImport("user32")] public static extern bool SetForegroundWindow(IntPtr h);
  [DllImport("user32")] public static extern bool ShowWindowAsync(IntPtr h,int cmd);
  [DllImport("user32")] public static extern bool IsIconic(IntPtr h);
- [DllImport("user32")] public static extern void keybd_event(byte key,byte scan,int flags,int extra);
+ // Native x64 INPUT union, keyboard member at offset 8.
+ [StructLayout(LayoutKind.Explicit, Size=40)] public struct Stroke {
+    [FieldOffset(0)] public int type; [FieldOffset(8)] public ushort key; [FieldOffset(12)] public uint flags;
+ }
+ [DllImport("user32",SetLastError=true)] static extern uint SendInput(uint n,Stroke[] keys,int size);
+ public static void SendChord(byte[] keys) {
+    var strokes=new Stroke[keys.Length*2];
+    for(int i=0;i<keys.Length;i++) {
+        strokes[i]=new Stroke {type=1,key=keys[i]};
+        strokes[strokes.Length-1-i]=new Stroke {type=1,key=keys[i],flags=2};
+    }
+    if(SendInput((uint)strokes.Length,strokes,40)!=strokes.Length) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+ }
  [DllImport("user32")] public static extern bool SetCursorPos(int x,int y);
  [DllImport("user32")] public static extern void mouse_event(int flags,int x,int y,int data,int extra);
  [DllImport("user32")] public static extern IntPtr WindowFromPoint(long pt);
@@ -58,8 +70,7 @@ function Front($h) {
 }
 function Key($h, [byte[]]$keys) {
     if ([Desktop]::GetForegroundWindow() -ne $h) { throw 'Focus changed before keystroke' }
-    foreach ($k in $keys) { [Desktop]::keybd_event($k,0,0,0) }
-    for ($i = $keys.Count-1; $i -ge 0; $i--) { [Desktop]::keybd_event($keys[$i],0,2,0) }
+    [Desktop]::SendChord($keys)
 }
 function Item($id) {
     $root = $ae::FromHandle($script:panel)
@@ -80,15 +91,28 @@ function TextValue { (Item 'Input').GetCurrentPattern([Windows.Automation.ValueP
 function EditorFrom($h) {
     $sw = [Diagnostics.Stopwatch]::StartNew()
     Key $h @(17,18,74)
-    $script:panel = WaitFor 'editor HWND' { $fg = [Desktop]::GetForegroundWindow(); if ($fg -ne [IntPtr]::Zero -and ($ae::FromHandle($fg)).Current.ProcessId -eq $app.Id) { $fg } }
+    try {
+        $script:panel = WaitFor 'editor HWND' { $fg = [Desktop]::GetForegroundWindow(); if ($fg -ne [IntPtr]::Zero -and ($ae::FromHandle($fg)).Current.ProcessId -eq $app.Id) { $fg } }
+    } catch {
+        $c = New-Object Windows.Automation.PropertyCondition($ae::ProcessIdProperty,$app.Id)
+        $own = $ae::RootElement.FindAll([Windows.Automation.TreeScope]::Children,$c)
+        throw "Editor foreground timeout. Exited=$($app.HasExited) visible_app_windows=$($own.Count) foreground_still_fixture=$([Desktop]::GetForegroundWindow() -eq $h)"
+    }
+    $foregroundMs = $sw.ElapsedMilliseconds
     $null = WaitFor 'focused input' { (Item 'Input').Current.HasKeyboardFocus }
-    Write-Output ('hotkey_to_focused_input_ms=' + $sw.ElapsedMilliseconds)
+    $elapsed = $sw.ElapsedMilliseconds
+    if ($elapsed -ge 200) { Write-Host "slow_sample_ms=$elapsed foreground_observed_ms=$foregroundMs focus_probe_ms=$($elapsed-$foregroundMs)" }
+    Write-Output ('hotkey_to_focused_input_ms=' + $elapsed)
 }
 function KillOwned($p) { if ($p -and !$p.HasExited) { & "$env:windir\system32\taskkill.exe" /PID $p.Id /T /F | Out-Null; $null = $p.WaitForExit(5000) } }
 try {
     $null = New-Item "$base\code\User" -ItemType Directory -Force
     [IO.File]::WriteAllText("$base\code\User\settings.json", '{"telemetry.telemetryLevel":"off","update.mode":"none","workbench.startupEditor":"none"}')
     [IO.File]::WriteAllText("$base\FocusMark-test.txt", 'FocusMark desktop acceptance')
+    $start = [Diagnostics.Stopwatch]::StartNew()
+    $app = Launch $appExe '' $true
+    if (!$app.WaitForInputIdle(8000)) { throw 'Startup timeout' }
+    Write-Output ('launch_to_first_input_idle_ms=' + $start.ElapsedMilliseconds)
     $editor = Launch $Code "--new-window --disable-extensions --disable-updates --user-data-dir=`"$base\code`" `"$base\FocusMark-test.txt`""
     $codeH = WaitFor 'VS Code window' { Handle $editor } 30
     $edge = Launch $Browser "--no-first-run --disable-background-networking --disable-sync --user-data-dir=`"$base\edge`" --app=about:blank"
@@ -97,11 +121,6 @@ try {
     } 25
     $owned.Add($edge)
     $edgeH = Handle $edge
-    $start = [Diagnostics.Stopwatch]::StartNew()
-    $app = Launch $appExe '' $true
-    if (!$app.WaitForInputIdle(8000)) { throw 'Startup timeout' }
-    Write-Output ('launch_to_first_input_idle_ms=' + $start.ElapsedMilliseconds)
-    Start-Sleep -Milliseconds 900 # Let first-time WPF/tray initialization finish after input-idle.
     Front $codeH
     EditorFrom $codeH
     (TextValue).SetValue('Continue line 12')

@@ -12,8 +12,10 @@ $base=Join-Path ([IO.Path]::GetTempPath()) ('FocusMark-Prefs-'+[guid]::NewGuid()
 $oldLocal=$env:LOCALAPPDATA
 try {
     $env:LOCALAPPDATA=$base
-    $null=New-Item "$base\FocusMark" -ItemType Directory -Force
-    [IO.File]::WriteAllText("$base\FocusMark\note.json", '{"text":"Working note"}')
+    $null=New-Item "$base\FocusMark\themes" -ItemType Directory -Force
+    $pack=Join-Path $base 'FocusMark\themes\ink.json'
+    [IO.File]::WriteAllText($pack, '{"version":1,"base":"dark","accent":"#77BBFF","capsuleWidth":248}')
+    [IO.File]::WriteAllText("$base\FocusMark\note.json", '{"text":"Working note","theme":"ink"}')
     # Explicitly load the build under test, including a WSL share path.
     $assembly=[Reflection.Assembly]::UnsafeLoadFrom((Resolve-Path $Exe).ProviderPath)
     $type=$assembly.GetType('FocusMark.App',$true)
@@ -25,6 +27,22 @@ try {
             $panel=$app.Windows[0]
             $tray=$type.GetField('tray','NonPublic,Instance').GetValue($app)
             $items=$tray.ContextMenuStrip.Items
+            if ($panel.Width -ne 248 -or $panel.Resources['Mint'].Color.ToString() -ne '#FF77BBFF') {throw 'Saved custom theme did not load'}
+            $appearance=$items | Where-Object Text -eq '外观'
+            $appearance.ShowDropDown(); $appearance.HideDropDown()
+            ($appearance.DropDownItems | Where-Object Text -eq '浅色 · 纸白').PerformClick()
+            if ($panel.Background.Color.ToString() -ne '#FFF8F7F2' -or $panel.Width -ne 216) {throw 'Light palette or width not applied'}
+            $saved=[IO.File]::ReadAllText("$base\FocusMark\note.json") | ConvertFrom-Json
+            if ($saved.text -ne 'Working note' -or $saved.theme -ne 'light') {throw 'Theme persistence changed note'}
+            [IO.File]::WriteAllText($pack,'{"version":2,"base":"dark","accent":"#DDDDDD","capsuleWidth":248}')
+            $load=$type.GetMethod('LoadTheme',[Reflection.BindingFlags]'NonPublic,Instance')
+            if (!$load.Invoke($app,@('ink',$true)) -or $panel.Background.Color.ToString() -ne '#FFF8F7F2') {throw 'Invalid pack replaced active theme'}
+            Remove-Item -LiteralPath $pack
+            $appearance.ShowDropDown(); $appearance.HideDropDown()
+            if ($appearance.DropDownItems | Where-Object Text -eq 'ink') {throw 'Removed theme still listed'}
+            ($appearance.DropDownItems | Where-Object Text -eq '深色 · 薄荷').PerformClick()
+            if ($panel.Background.Color.ToString() -ne '#FF22252B') {throw 'Default palette not restored'}
+            Write-Output 'PASS startup custom theme, light selection, persistence, rejected version, unplug and restore dark' | Out-Host
             $items | Where-Object Text -eq '隐藏胶囊文字' | ForEach-Object { $_.PerformClick() }
             $items | Where-Object Text -eq '贴近屏幕底部' | ForEach-Object { $_.PerformClick() }
             $panel.UpdateLayout()
