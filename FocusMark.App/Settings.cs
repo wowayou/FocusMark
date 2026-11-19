@@ -30,6 +30,10 @@ namespace FocusMark
             var position = (ComboBox)w.FindName("Position");
             var mask = (CheckBox)w.FindName("Mask");
             var letter = (Button)w.FindName("Letter");
+            var scale = (Slider)w.FindName("Scale");
+            var radius = (Slider)w.FindName("Radius");
+            scale.Value = store.Current.Scale;
+            radius.Value = store.Current.Radius;
             var along = (Slider)w.FindName("Along");
             var animate = (CheckBox)w.FindName("Animate");
             string key = store.Current.Letter;
@@ -70,13 +74,20 @@ namespace FocusMark
                 sample.Height = expanded ? 64 : upright ? 64 : tab ? 18 : 32;
                 sample.Width = expanded ? 252 : upright ? 18 : tab ? 64 : mask.IsChecked == true ? 100 : previewTheme.Width;
                 sample.Padding = tab && !expanded ? new Thickness(0) : new Thickness(12,0,12,0);
-                sample.CornerRadius = new CornerRadius(expanded ? 10 : 16);
+                var stage = (Canvas)w.FindName("SampleArea");
+                double zoom = expanded ? 0.8 : 0.8 * scale.Value / 100;
+                if (stage.ActualHeight > 2 && stage.ActualWidth > 2)
+                    zoom = Math.Min(zoom, Math.Min((stage.ActualHeight - 2) / sample.Height, (stage.ActualWidth - 2) / sample.Width));
+                var transform = (System.Windows.Media.ScaleTransform)sample.LayoutTransform;
+                transform.ScaleX = transform.ScaleY = zoom;
+                sample.CornerRadius = new CornerRadius(expanded ? 10 : Math.Min(tab ? 9 : 16, radius.Value));
+                ((TextBlock)w.FindName("ScaleLabel")).Text = scale.Value + "%";
+                ((TextBlock)w.FindName("RadiusLabel")).Text = radius.Value.ToString();
                 var grip = (Border)w.FindName("SampleGrip");
                 grip.Width = upright ? 4 : 30;
                 grip.Height = upright ? 30 : 4;
-                var stage = (Canvas)w.FindName("SampleArea");
-                var point = DockPoint(dock, (int)along.Value - 50, stage.ActualWidth - sample.Width * 0.8 - 2,
-                    stage.ActualHeight - sample.Height * 0.8 - 2, tab && !expanded ? 0 : 5);
+                var point = DockPoint(dock, (int)along.Value - 50, stage.ActualWidth - sample.Width * zoom - 2,
+                    stage.ActualHeight - sample.Height * zoom - 2, tab && !expanded ? 0 : 5);
                 Canvas.SetLeft(trySample, point.X);
                 Canvas.SetTop(trySample, point.Y);
                 ((TextBlock)w.FindName("Percent")).Text = ((int)along.Value) + "%";
@@ -91,6 +102,8 @@ namespace FocusMark
             RoutedEventHandler changeMode = delegate { expanded = false; preview(); };
             regular.Checked += changeMode; edge.Checked += changeMode; hidden.Checked += changeMode;
             position.SelectionChanged += delegate { preview(); };
+            scale.ValueChanged += delegate { preview(); };
+            radius.ValueChanged += delegate { preview(); };
             along.ValueChanged += delegate { preview(); };
             ((Canvas)w.FindName("SampleArea")).SizeChanged += delegate { preview(); };
             Action stopRecording = delegate { recordingKey = false; letter.Content = Note.Chord(mods, key); };
@@ -133,10 +146,11 @@ namespace FocusMark
                 try { next = ThemeProfile.Read(id); }
                 catch (Exception e) { if (!IsThemeError(e)) throw; report(e.Message); return; }
                 string rest = edge.IsChecked == true ? "edge" : hidden.IsChecked == true ? "hidden" : null;
-                string problem = CommitWithKey(key, mods, delegate { store.Configure(position.SelectedIndex, (int)along.Value - 50, mask.IsChecked == true, id, key, mods, rest, animate.IsChecked != true); });
+                bool reveal = view == View.Hidden && note != null && store.Current.Rest == "hidden" && rest != "hidden";
+                string problem = CommitWithKey(key, mods, delegate { store.Configure(position.SelectedIndex, (int)along.Value - 50, mask.IsChecked == true, id, key, mods, rest, animate.IsChecked != true, (int)scale.Value, (int)radius.Value); });
                 if (problem != null) { report(problem); return; }
                 activeTheme = id; theme = next; theme.Apply(panel.Resources);
-                if (view == View.Pill || (view == View.Hidden && note != null)) ShowView(View.Pill);
+                if (view == View.Pill || reveal) ShowView(View.Pill);
                 else Place();
                 w.Close();
             };

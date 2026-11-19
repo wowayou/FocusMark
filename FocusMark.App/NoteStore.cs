@@ -20,10 +20,14 @@ namespace FocusMark
         [DataMember(Name="side", EmitDefaultValue=false)] public string Side { get; private set; }
         [DataMember(Name="offset", EmitDefaultValue=false)] public int Offset { get; private set; }
         [DataMember(Name="still", EmitDefaultValue=false)] public bool Still { get; private set; }
+        [DataMember(Name="scale", EmitDefaultValue=false)] internal int? ScaleSetting;
+        [DataMember(Name="radius", EmitDefaultValue=false)] internal int? RadiusSetting;
+        internal int Scale { get { return Math.Max(80, Math.Min(140, ScaleSetting ?? 100)); } }
+        internal int Radius { get { return Math.Max(0, Math.Min(16, RadiusSetting ?? 4)); } }
         internal int Modifiers { get { return Mods >= 1 && Mods <= 15 ? Mods : 3; } }
         internal string Letter { get { return VirtualKey(Key) == 0 ? "J" : Key; } }
         internal int Dock { get { return Side == "left" ? 2 : Side == "right" ? 3 : Bottom ? 1 : 0; } }
-        internal bool HasOptions { get { return Bottom || HidePreview || Theme != null || Key != null || Rest != null || Mods != 0 || Side != null || Offset != 0 || Still; } }
+        internal bool HasOptions { get { return Bottom || HidePreview || Theme != null || Key != null || Rest != null || Mods != 0 || Side != null || Offset != 0 || Still || ScaleSetting.HasValue || RadiusSetting.HasValue; } }
 
         internal static int VirtualKey(string key)
         {
@@ -45,12 +49,13 @@ namespace FocusMark
             next.Text = text;
             return next;
         }
-        internal Note WithOptions(int dock, int offset, bool mask, string theme, string key, int mods, string rest, bool still)
+        internal Note WithOptions(int dock, int offset, bool mask, string theme, string key, int mods, string rest, bool still, int scale, int radius)
         {
-            if (dock < 0 || dock > 3 || offset < -50 || offset > 50 || VirtualKey(key) == 0 || mods < 1 || mods > 15 ||
+            if (scale < 80 || scale > 140 || radius < 0 || radius > 16 || dock < 0 || dock > 3 || offset < -50 || offset > 50 || VirtualKey(key) == 0 || mods < 1 || mods > 15 ||
                 (rest != null && rest != "edge" && rest != "hidden")) throw new ArgumentException("设置值超出范围。");
             return new Note { Text = Text, Bottom = dock == 1, Side = dock == 2 ? "left" : dock == 3 ? "right" : null,
                 Offset = offset, HidePreview = mask, Theme = theme, Key = key == "J" ? null : key,
+                ScaleSetting = scale == 100 ? (int?)null : scale, RadiusSetting = radius == 4 ? (int?)null : radius,
                 Mods = mods == 3 ? 0 : mods, Rest = rest, Still = still };
         }
 
@@ -121,9 +126,16 @@ namespace FocusMark
 
         internal void Clear() { Commit(Current.WithText(null)); }
 
-        internal void Configure(int dock, int offset, bool mask, string theme, string key, int mods, string rest, bool still)
+        internal void Configure(int dock, int offset, bool mask, string theme, string key, int mods, string rest, bool still, int scale = 100, int radius = 4)
         {
-            Commit(Current.WithOptions(dock, offset, mask, theme, key, mods, rest, still));
+            Commit(Current.WithOptions(dock, offset, mask, theme, key, mods, rest, still, scale, radius));
+        }
+
+        internal void Move(int dock, int offset)
+        {
+            var n = Current;
+            if (dock != n.Dock || offset != n.Offset)
+                Configure(dock, offset, n.HidePreview, n.Theme, n.Letter, n.Modifiers, n.Rest, n.Still, n.Scale, n.Radius);
         }
 
         void Commit(Note next)

@@ -98,6 +98,10 @@ internal static class Tests
             store.Configure(3, 32, false, null, "F8", 6, "edge", true);
             store.Save("dock across restart"); store.Clear();
             Check(reopened.Load(out warning) == null && warning == null && reopened.Current.Dock == 3 && reopened.Current.Offset == 32 && reopened.Current.Modifiers == 6 && reopened.Current.Letter == "F8" && reopened.Current.Still, "custom dock, motion and function chord survive save, clear and restart");
+            store.Configure(2, 7, false, null, "F8", 6, "edge", true, 140, 0);
+            store.Move(1, -23);
+            reopened.Load(out warning);
+            Check(reopened.Current.Dock == 1 && reopened.Current.Offset == -23 && reopened.Current.Scale == 140 && reopened.Current.Radius == 0 && reopened.Current.Rest == "edge" && reopened.Current.Still && reopened.Current.Letter == "F8", "drag preserves shape and shortcut across restart, square corner allowed");
             Check(Note.VirtualKey("F8") == 119 && Note.VirtualKey("7") == 55 && Note.VirtualKey("F12") == 0 && Note.Chord(6, "F8") == "Ctrl+Shift+F8", "shortcut naming and supported key boundaries");
             Check(WindowTarget.Capture(IntPtr.Zero) == null, "missing foreground rejected");
             WindowIdentity();

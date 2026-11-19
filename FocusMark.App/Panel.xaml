@@ -11,7 +11,7 @@
   </Style>
  </Window.Resources>
  <Border Name="Shell" Background="{DynamicResource Panel}" CornerRadius="10"><Grid>
-  <Button Name="Pill" Height="32" Visibility="Collapsed" Padding="0" Background="Transparent" ToolTip="点击查看 · 中键隐藏" AutomationProperties.Name="展开备注">
+  <Button Name="Pill" Height="32" Visibility="Collapsed" Padding="0" Background="Transparent" ToolTip="点击查看 · 拖动换边 · 中键隐藏" AutomationProperties.Name="展开备注">
    <Button.Template><ControlTemplate TargetType="Button"><Border Background="Transparent" CornerRadius="16"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border></ControlTemplate></Button.Template>
    <Grid><Border Name="Grip" Visibility="Collapsed" Width="30" Height="4" CornerRadius="2" Background="{DynamicResource Mint}"/><DockPanel Name="Summary" Margin="12,0"><Path DockPanel.Dock="Left" Data="{StaticResource Bookmark}" Fill="{DynamicResource Mint}" Width="12" Height="17" Margin="0,0,8,0" VerticalAlignment="Center"/><TextBlock Name="Preview" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/></DockPanel></Grid>
   </Button>

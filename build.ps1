@@ -7,7 +7,7 @@ try {
     $null = New-Item dist -ItemType Directory -Force
     $common = @('/nologo','/optimize+','/warnaserror+','/platform:x64','/codepage:65001','/r:System.Runtime.Serialization.dll','/r:System.Windows.Forms.dll')
     $wpf = 'PresentationCore','PresentationFramework','WindowsBase' | ForEach-Object { '/r:' + (Join-Path $f "WPF\$_.dll") }
-    & "$f\csc.exe" @common @wpf /r:System.Xaml.dll /r:System.Drawing.dll /target:winexe /out:dist\FocusMark.exe /win32icon:assets\focusmark.ico /win32manifest:FocusMark.App\app.manifest /resource:FocusMark.App\Panel.xaml,Panel.xaml /resource:themes\amber.json,amber.json /resource:FocusMark.App\Settings.xaml,Settings.xaml FocusMark.App\Settings.cs FocusMark.App\ThemeProfile.cs FocusMark.App\App.cs FocusMark.App\NoteStore.cs FocusMark.App\WindowTarget.cs
+    & "$f\csc.exe" @common @wpf /r:System.Xaml.dll /r:System.Drawing.dll /target:winexe /out:dist\FocusMark.exe /win32icon:assets\focusmark.ico /win32manifest:FocusMark.App\app.manifest /resource:FocusMark.App\Panel.xaml,Panel.xaml /resource:themes\amber.json,amber.json /resource:FocusMark.App\Settings.xaml,Settings.xaml FocusMark.App\PillDrag.cs FocusMark.App\Settings.cs FocusMark.App\ThemeProfile.cs FocusMark.App\App.cs FocusMark.App\NoteStore.cs FocusMark.App\WindowTarget.cs
     if ($LASTEXITCODE) { throw 'App build failed' }
     if ($Test) {
         $null = New-Item build -ItemType Directory -Force

@@ -6,6 +6,8 @@ Add-Type -MemberDefinition @'
 [DllImport("user32")] public static extern bool RegisterHotKey(IntPtr h,int id,int mods,int key);
 [DllImport("user32")] public static extern bool UnregisterHotKey(IntPtr h,int id);
 [DllImport("user32")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr value);
+[DllImport("user32")] public static extern bool SetCursorPos(int x,int y);
+[DllImport("user32")] public static extern void mouse_event(int flags,int x,int y,int data,int extra);
 [DllImport("user32")] public static extern IntPtr WindowFromPoint(long point);
 [DllImport("user32")] public static extern IntPtr GetForegroundWindow();
 [DllImport("user32")] public static extern void keybd_event(byte key,byte scan,int flags,int extra);
@@ -117,7 +119,26 @@ try {
                 }
             }
             Write-Output 'PASS four edges and 25% displacement, transparent corner and opaque center' | Out-Host
-            ClickControl $panel 'Pill'; if (!$panel.FindName('FullNote').IsVisible) {throw 'Edge did not open'}
+            $w=Settings; $w.FindName('Scale').Value=125; $w.FindName('Radius').Value=2; ClickControl $w 'Apply'; Pump
+            if ($panel.FindName('Shell').CornerRadius.TopLeft -ne 2.5) {throw 'Scaled radius failed'}
+            $null=[Tests.Geometry]::GetWindowRect($h,[ref]$rect)
+            $x=[int](($rect.Left+$rect.Right)/2); $y=[int](($rect.Top+$rect.Bottom)/2)
+            if ((Hit $x $y) -ne $h) {throw 'Drag target obstructed'}
+            $null=[Tests.Geometry]::SetCursorPos($x,$y); Pump
+            [Tests.Geometry]::mouse_event(2,0,0,0,0)
+            try {
+                Pump; $null=[Tests.Geometry]::SetCursorPos($x-30,$y); Pump
+                $null=[Tests.Geometry]::SetCursorPos([int]($work.Left+$work.Width*.7),$work.Top+40); Pump
+            } finally { [Tests.Geometry]::mouse_event(4,0,0,0,0) }; Pump
+            $null=[Tests.Geometry]::GetWindowRect($h,[ref]$rect)
+            $state=[IO.File]::ReadAllText("$base\FocusMark\note.json") | ConvertFrom-Json
+            if (!$panel.FindName('Grip').IsVisible -or $rect.Top -ne $work.Top -or $rect.Right-$rect.Left -le 80 -or $state.offset -lt 18 -or $state.offset -gt 24 -or $state.side -eq 'right' -or $state.scale -ne 125 -or $state.radius -ne 2) {throw "Drag, snap or atomic preferences failed: $($rect.Top) offset=$($state.offset)"}
+            $x=[int](($rect.Left+$rect.Right)/2); $y=[int](($rect.Top+$rect.Bottom)/2)
+            $null=[Tests.Geometry]::SetCursorPos($x,$y); Pump
+            if ((Hit $x $y) -ne $h) {throw 'Click target obstructed'}
+            [Tests.Geometry]::mouse_event(2,0,0,0,0); [Tests.Geometry]::mouse_event(4,0,0,0,0); Pump
+            if (!$panel.FindName('FullNote').IsVisible) {throw 'Click after dragging did not open note'}
+            Write-Output 'PASS physical drag right to top, persisted shape, no accidental expansion, click to open' | Out-Host
             ClickControl $panel 'Fold'
             $w=Settings; $w.FindName('ShowNone').IsChecked=$true; ClickControl $w 'Apply'
             if ($panel.IsVisible) {throw 'Hidden mode still visible'}

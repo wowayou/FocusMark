@@ -67,6 +67,7 @@ namespace FocusMark
             TextCompositionManager.AddPreviewTextInputUpdateHandler(input, delegate { composing = true; });
             input.AddHandler(TextCompositionManager.PreviewTextInputEvent, new TextCompositionEventHandler(delegate { composing = false; }), true);
             panel.PreviewKeyDown += Keys;
+            EnablePillDrag(Find<Button>("Pill"));
             Find<Button>("Save").Click += delegate { Save(); };
             Find<Button>("Pill").Click += delegate {
                 ShowView(View.Details);
@@ -75,11 +76,13 @@ namespace FocusMark
                     var details = Find<FrameworkElement>("Details");
                     var duration = TimeSpan.FromMilliseconds(130);
                     var fade = new System.Windows.Media.Animation.DoubleAnimation(0.45, 1, duration);
-                    var slide = new System.Windows.Media.Animation.DoubleAnimation(store.Current.Bottom ? 5 : -5, 0, duration);
+                    bool side = store.Current.Dock >= 2;
+                    double distance = store.Current.Dock == 1 || store.Current.Dock == 3 ? 5 : -5;
+                    var slide = new System.Windows.Media.Animation.DoubleAnimation(distance, 0, duration);
                     slide.EasingFunction = new System.Windows.Media.Animation.QuadraticEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut };
                     fade.FillBehavior = slide.FillBehavior = System.Windows.Media.Animation.FillBehavior.Stop;
                     details.BeginAnimation(UIElement.OpacityProperty, fade);
-                    ((System.Windows.Media.TranslateTransform)details.RenderTransform).BeginAnimation(System.Windows.Media.TranslateTransform.YProperty, slide);
+                    ((System.Windows.Media.TranslateTransform)details.RenderTransform).BeginAnimation(side ? System.Windows.Media.TranslateTransform.XProperty : System.Windows.Media.TranslateTransform.YProperty, slide);
                 }
             };
             Find<Button>("Pill").PreviewMouseDown += (s, a) => { if (a.ChangedButton == MouseButton.Middle) { HidePanel(); a.Handled = true; } };
@@ -282,7 +285,7 @@ namespace FocusMark
         void Collapse() { if (note == null) HidePanel(); else ShowView(View.Pill); }
         void DropTarget() { if (target != null) { target.Dispose(); target = null; } }
         void DiscardCandidate() { if (candidate != null) { candidate.Dispose(); candidate = null; } }
-        void HidePanel() { EndEdit(); DiscardCandidate(); view = View.Hidden; panel.Hide(); }
+        void HidePanel() { StopPress(); EndEdit(); DiscardCandidate(); view = View.Hidden; panel.Hide(); }
         void SetStatus(string message)
         {
             var label = Find<TextBlock>("Status");
@@ -295,6 +298,8 @@ namespace FocusMark
             bool edge = store.Current.Rest == "edge";
             var pill = Find<Button>("Pill");
             bool upright = edge && store.Current.Dock >= 2;
+            double scale = store.Current.Scale / 100.0;
+            pill.LayoutTransform = new System.Windows.Media.ScaleTransform(scale, scale);
             pill.Height = upright ? 64 : edge ? 18 : 32;
             var grip = Find<Border>("Grip");
             grip.Width = upright ? 4 : 30;
@@ -302,11 +307,16 @@ namespace FocusMark
             Find<FrameworkElement>("Grip").Visibility = edge ? Visibility.Visible : Visibility.Collapsed;
             Find<FrameworkElement>("Summary").Visibility = edge ? Visibility.Collapsed : Visibility.Visible;
             Find<TextBlock>("Preview").Text = edge ? null : store.Current.HidePreview ? "查看备注" : note;
-            if (view == View.Pill) panel.Width = upright ? 18 : edge ? 64 : store.Current.HidePreview ? 100 : theme.Width;
+            if (view == View.Pill)
+            {
+                panel.Width = scale * (upright ? 18 : edge ? 64 : store.Current.HidePreview ? 100 : theme.Width);
+                Find<Border>("Shell").CornerRadius = new CornerRadius(scale * Math.Min(edge ? 9 : 16, store.Current.Radius));
+            }
         }
 
         void ShowView(View next)
         {
+            StopPress();
             if (next == View.Pill && store.Current.Rest == "hidden") { HidePanel(); return; }
             if (next != View.Editor) { EndEdit(); DiscardCandidate(); }
             // Hiding releases editor focus when collapsing. A visible passive capsule
@@ -314,7 +324,7 @@ namespace FocusMark
             if (next == View.Pill && panel.IsActive) panel.Hide();
             view = next;
             var shell = Find<Border>("Shell");
-            shell.CornerRadius = new CornerRadius(next == View.Pill ? 16 : 10);
+            if (next != View.Pill) shell.CornerRadius = new CornerRadius(10);
             shell.SetResourceReference(Border.BackgroundProperty, next == View.Pill ? "PillSurface" : "Panel");
             foreach (var item in new[] { View.Pill, View.Editor, View.Details })
                 Find<FrameworkElement>(item.ToString()).Visibility = item == next ? Visibility.Visible : Visibility.Collapsed;
@@ -338,7 +348,7 @@ namespace FocusMark
         void Place()
         {
             RectPx rect;
-            if (screen == null || !panel.IsVisible || !GetWindowRect(handle, out rect)) return;
+            if (dragging || screen == null || !panel.IsVisible || !GetWindowRect(handle, out rect)) return;
             var work = screen.WorkingArea;
             int gap = view == View.Pill && store.Current.Rest == "edge" ? 0 : 8;
             var point = DockPoint(store.Current.Dock, store.Current.Offset, work.Width - (rect.Right-rect.Left), work.Height - (rect.Bottom-rect.Top), gap);
@@ -351,6 +361,7 @@ namespace FocusMark
         protected override void OnExit(ExitEventArgs e)
         {
             exiting = true;
+            StopPress();
             SystemEvents.DisplaySettingsChanged -= DisplayChanged;
             if (hotkeyId != 0) UnregisterHotKey(handle, hotkeyId);
             if (tray != null) { tray.Visible = false; tray.Icon.Dispose(); tray.ContextMenuStrip.Dispose(); tray.Dispose(); }

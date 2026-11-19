@@ -55,6 +55,10 @@
     <DockPanel Margin="0,5"><ComboBox DockPanel.Dock="Right" Name="Position" SelectedIndex="0"><ComboBoxItem Content="屏幕顶部"/><ComboBoxItem Content="屏幕底部"/><ComboBoxItem Content="屏幕左侧"/><ComboBoxItem Content="屏幕右侧"/></ComboBox><Label Content="停靠位置" Target="{Binding ElementName=Position}"/></DockPanel>
     <DockPanel Margin="0,3"><TextBlock Name="Percent" DockPanel.Dock="Right" Width="44" TextAlignment="Right" Foreground="{DynamicResource Secondary}"/><Label DockPanel.Dock="Left" Content="沿边位置" Target="{Binding ElementName=Along}"/><Slider Name="Along" Margin="20,0,0,0" Minimum="0" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" IsMoveToPointEnabled="True"/></DockPanel>
     <Separator Background="{DynamicResource Control}"/>
+    <Expander Name="ShapeControls" Header="大小与圆角" Foreground="{DynamicResource Text}" Margin="0,4"><StackPanel Margin="4,5,0,3">
+     <DockPanel Margin="0,3"><TextBlock Name="ScaleLabel" DockPanel.Dock="Right" Width="44" TextAlignment="Right"/><Label Content="整体大小" Target="{Binding ElementName=Scale}" DockPanel.Dock="Left"/><Slider Name="Scale" Margin="14,0" Minimum="80" Maximum="140" TickFrequency="5" IsSnapToTickEnabled="True"/></DockPanel>
+     <DockPanel Margin="0,3"><TextBlock Name="RadiusLabel" DockPanel.Dock="Right" Width="44" TextAlignment="Right"/><Label Content="圆角半径" Target="{Binding ElementName=Radius}" DockPanel.Dock="Left"/><Slider Name="Radius" Margin="14,0" Minimum="0" Maximum="16" TickFrequency="1" IsSnapToTickEnabled="True"/></DockPanel>
+    </StackPanel></Expander>
     <CheckBox Name="Mask" Content="隐藏胶囊上的文字" Foreground="{DynamicResource Text}" Margin="0,8"/>
    </StackPanel></Border>
    <Border Background="{DynamicResource PillSurface}" BorderBrush="{DynamicResource Control}" BorderThickness="1" CornerRadius="9" Padding="12,2" Margin="0,8,0,0"><StackPanel>
