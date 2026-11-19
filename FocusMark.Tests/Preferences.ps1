@@ -6,10 +6,9 @@ Add-Type -MemberDefinition @'
 [DllImport("user32")] public static extern bool RegisterHotKey(IntPtr h,int id,int mods,int key);
 [DllImport("user32")] public static extern bool UnregisterHotKey(IntPtr h,int id);
 [DllImport("user32")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr value);
-[DllImport("gdi32")] public static extern IntPtr CreateRectRgn(int l,int t,int r,int b);
-[DllImport("user32")] public static extern int GetWindowRgn(IntPtr h,IntPtr r);
-[DllImport("gdi32")] public static extern bool PtInRegion(IntPtr r,int x,int y);
-[DllImport("gdi32")] public static extern bool DeleteObject(IntPtr r);
+[DllImport("user32")] public static extern IntPtr WindowFromPoint(long point);
+[DllImport("user32")] public static extern IntPtr GetForegroundWindow();
+[DllImport("user32")] public static extern void keybd_event(byte key,byte scan,int flags,int extra);
 [DllImport("user32")] public static extern bool GetWindowRect(IntPtr h, out Rect r);
 [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left, Top, Right, Bottom; }
 '@ -Name Geometry -Namespace Tests
@@ -52,8 +51,18 @@ try {
             if ($w.FindName('TrySample').IsVisible -or !$w.FindName('HiddenHint').IsVisible) {throw 'Hidden preview inaccurate'}
             $w.FindName('ShowPill').IsChecked=$true
             Write-Output 'PASS interactive preview, fold and hidden recovery hint' | Out-Host
-            $w.FindName('Letter').SelectedIndex=10
-            if (![Tests.Geometry]::RegisterHotKey([IntPtr]::Zero,124,0x4003,75)) { throw 'K is in use by another app' }
+            function Pump {
+                $frame=New-Object Windows.Threading.DispatcherFrame; $t=New-Object Windows.Threading.DispatcherTimer
+                $t.Interval=[TimeSpan]::FromMilliseconds(100); $t.Add_Tick({$t.Stop();$frame.Continue=$false}); $t.Start(); [Windows.Threading.Dispatcher]::PushFrame($frame)
+            }
+            $null=$w.Activate(); $null=$w.FindName('Letter').Focus(); ClickControl $w 'Letter'; Pump
+            $wh=(New-Object Windows.Interop.WindowInteropHelper($w)).Handle
+            if ([Tests.Geometry]::GetForegroundWindow() -ne $wh) {throw 'Keyboard target changed'}
+            foreach ($vk in 17,16,75){[Tests.Geometry]::keybd_event($vk,0,0,0)}
+            foreach ($vk in 75,16,17){[Tests.Geometry]::keybd_event($vk,0,2,0)}
+            Pump
+            if ($w.FindName('Letter').Content -ne 'Ctrl+Shift+K') {throw 'Custom chord recording failed'}
+            if (![Tests.Geometry]::RegisterHotKey([IntPtr]::Zero,124,0x4006,75)) { throw 'K is in use by another app' }
             try { ClickControl $w 'Apply'; if (!$w.FindName('Error').IsVisible -or $tray.Text -notlike "*+$InitialLetter") {throw 'Conflict replaced original binding'} }
             finally { $null=[Tests.Geometry]::UnregisterHotKey([IntPtr]::Zero,124) }
             $lock=[IO.File]::Open("$base\FocusMark\note.json",'Open','Read','Read')
@@ -61,20 +70,20 @@ try {
             finally { $lock.Dispose() }
             $w.FindName('Palette').SelectedIndex=1; ClickControl $w 'Apply'
             if ($tray.Text -notlike '*+K' -or ([IO.File]::ReadAllText("$base\FocusMark\note.json") | ConvertFrom-Json).key -ne 'K') {throw 'Key not saved'}
-            if ([Tests.Geometry]::RegisterHotKey([IntPtr]::Zero,124,0x4003,75)) { $null=[Tests.Geometry]::UnregisterHotKey([IntPtr]::Zero,124);throw 'New key is unbound' }
+            if ([Tests.Geometry]::RegisterHotKey([IntPtr]::Zero,124,0x4006,75)) { $null=[Tests.Geometry]::UnregisterHotKey([IntPtr]::Zero,124);throw 'New key is unbound' }
             if (![Tests.Geometry]::RegisterHotKey([IntPtr]::Zero,124,0x4003,([int][char]$InitialLetter))) {throw 'Old key is still registered'}
             $null=[Tests.Geometry]::UnregisterHotKey([IntPtr]::Zero,124)
             Write-Output "PASS new shortcut reserved, old released, collision and write failure preserve $InitialLetter" | Out-Host
-            if ($panel.Background.Color.ToString() -ne '#FFF8F7F2' -or $panel.Width -ne 216) {throw 'Light palette or width not applied'}
+            if ($panel.Resources['Panel'].Color.ToString() -ne '#FFF8F7F2' -or $panel.Width -ne 216) {throw 'Light palette or width not applied'}
             $saved=[IO.File]::ReadAllText("$base\FocusMark\note.json") | ConvertFrom-Json
             if ($saved.text -ne 'Working note' -or $saved.theme -ne 'light') {throw 'Theme persistence changed note'}
             [IO.File]::WriteAllText($pack,'{"version":2,"base":"dark","accent":"#DDDDDD","capsuleWidth":248}')
             $w=Settings; $w.FindName('Palette').SelectedIndex=2; ClickControl $w 'Apply'
-            if (!$w.FindName('Error').IsVisible -or $panel.Background.Color.ToString() -ne '#FFF8F7F2') {throw 'Invalid pack replaced active theme'}
+            if (!$w.FindName('Error').IsVisible -or $panel.Resources['Panel'].Color.ToString() -ne '#FFF8F7F2') {throw 'Invalid pack replaced active theme'}
             ClickControl $w 'Cancel'; Remove-Item -LiteralPath $pack
             $w=Settings; if ($w.FindName('Palette').Items.Count -ne 2) {throw 'Removed pack still listed'}
             $w.FindName('Palette').SelectedIndex=0; $w.FindName('Mask').IsChecked=$true; $w.FindName('Position').SelectedIndex=1; ClickControl $w 'Apply'
-            if ($panel.Background.Color.ToString() -ne '#FF22252B') {throw 'Dark theme not restored'}
+            if ($panel.Resources['Panel'].Color.ToString() -ne '#FF22252B') {throw 'Dark theme not restored'}
             $panel.UpdateLayout()
             $h=(New-Object Windows.Interop.WindowInteropHelper($panel)).Handle
             $work=[Windows.Forms.Screen]::FromHandle($h).WorkingArea
@@ -93,10 +102,21 @@ try {
             $w=Settings; $w.FindName('ShowEdge').IsChecked=$true; ClickControl $w 'Apply'
             $panel.UpdateLayout(); $null=[Tests.Geometry]::GetWindowRect($h,[ref]$rect)
             if (!$panel.FindName('Grip').IsVisible -or $rect.Bottom -ne $work.Bottom -or $panel.Width -ne 64) {throw 'Edge geometry failed'}
-            $region=[Tests.Geometry]::CreateRectRgn(0,0,0,0)
-            try {
-                if (![Tests.Geometry]::GetWindowRgn($h,$region) -or [Tests.Geometry]::PtInRegion($region,0,0) -or ![Tests.Geometry]::PtInRegion($region,32,9)) {throw 'Edge window hit region incorrect'}
-            } finally { $null=[Tests.Geometry]::DeleteObject($region) }
+            function Hit($x,$y) { [Tests.Geometry]::WindowFromPoint(([long]$y -shl 32) -bor ([long]$x -band 0xffffffffL)) }
+            Pump
+            if ((Hit $rect.Left $rect.Top) -eq $h -or (Hit ($rect.Left+32) ($rect.Top+9)) -ne $h) {throw 'Transparent corner or center hit test failed'}
+            foreach ($dock in 0,1,2,3) {
+                $w=Settings; $w.FindName('Position').SelectedIndex=$dock; $w.FindName('Along').Value=25; ClickControl $w 'Apply'; Pump
+                $null=[Tests.Geometry]::GetWindowRect($h,[ref]$rect)
+                if ($dock -lt 2) {
+                    $expected=$work.Left+($work.Width-($rect.Right-$rect.Left))*.25
+                    if ([Math]::Abs($rect.Left-$expected) -gt 1 -or ($dock -eq 0 -and $rect.Top -ne $work.Top) -or ($dock -eq 1 -and $rect.Bottom -ne $work.Bottom)){throw 'Horizontal dock failed'}
+                } else {
+                    $expected=$work.Top+($work.Height-($rect.Bottom-$rect.Top))*.25
+                    if ([Math]::Abs($rect.Top-$expected) -gt 1 -or ($dock -eq 2 -and $rect.Left -ne $work.Left) -or ($dock -eq 3 -and $rect.Right -ne $work.Right) -or [Math]::Abs($panel.Width-18) -gt 0.5){throw 'Vertical dock failed'}
+                }
+            }
+            Write-Output 'PASS four edges and 25% displacement, transparent corner and opaque center' | Out-Host
             ClickControl $panel 'Pill'; if (!$panel.FindName('FullNote').IsVisible) {throw 'Edge did not open'}
             ClickControl $panel 'Fold'
             $w=Settings; $w.FindName('ShowNone').IsChecked=$true; ClickControl $w 'Apply'

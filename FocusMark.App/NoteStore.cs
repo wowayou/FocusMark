@@ -16,15 +16,42 @@ namespace FocusMark
         [DataMember(Name="theme", EmitDefaultValue=false)] public string Theme { get; private set; }
         [DataMember(Name="key", EmitDefaultValue=false)] public string Key { get; private set; }
         [DataMember(Name="rest", EmitDefaultValue=false)] public string Rest { get; private set; }
-        internal string Letter { get { return Key != null && Key.Length == 1 && Key[0] >= 'A' && Key[0] <= 'Z' ? Key : "J"; } }
-        internal Note(string text = null, bool bottom = false, bool hidePreview = false, string theme = null, string key = null, string rest = null)
+        [DataMember(Name="mods", EmitDefaultValue=false)] public int Mods { get; private set; }
+        [DataMember(Name="side", EmitDefaultValue=false)] public string Side { get; private set; }
+        [DataMember(Name="offset", EmitDefaultValue=false)] public int Offset { get; private set; }
+        [DataMember(Name="still", EmitDefaultValue=false)] public bool Still { get; private set; }
+        internal int Modifiers { get { return Mods >= 1 && Mods <= 15 ? Mods : 3; } }
+        internal string Letter { get { return VirtualKey(Key) == 0 ? "J" : Key; } }
+        internal int Dock { get { return Side == "left" ? 2 : Side == "right" ? 3 : Bottom ? 1 : 0; } }
+        internal bool HasOptions { get { return Bottom || HidePreview || Theme != null || Key != null || Rest != null || Mods != 0 || Side != null || Offset != 0 || Still; } }
+
+        internal static int VirtualKey(string key)
         {
-            Rest = rest;
-            Key = key;
-            Text = text;
-            Bottom = bottom;
-            Theme = theme;
-            HidePreview = hidePreview;
+            if (String.IsNullOrEmpty(key)) return 0;
+            char c = key[0];
+            if (key.Length == 1 && ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'))) return c;
+            int f;
+            if (c == 'F' && int.TryParse(key.Substring(1), out f) && f >= 1 && f <= 11 && key == "F" + f) return 111 + f;
+            return 0;
+        }
+        internal static string Chord(int mods, string key)
+        {
+            return ((mods & 2) != 0 ? "Ctrl+" : "") + ((mods & 1) != 0 ? "Alt+" : "") +
+                ((mods & 4) != 0 ? "Shift+" : "") + ((mods & 8) != 0 ? "Win+" : "") + key;
+        }
+        internal Note WithText(string text)
+        {
+            var next = (Note)MemberwiseClone();
+            next.Text = text;
+            return next;
+        }
+        internal Note WithOptions(int dock, int offset, bool mask, string theme, string key, int mods, string rest, bool still)
+        {
+            if (dock < 0 || dock > 3 || offset < -50 || offset > 50 || VirtualKey(key) == 0 || mods < 1 || mods > 15 ||
+                (rest != null && rest != "edge" && rest != "hidden")) throw new ArgumentException("设置值超出范围。");
+            return new Note { Text = Text, Bottom = dock == 1, Side = dock == 2 ? "left" : dock == 3 ? "right" : null,
+                Offset = offset, HidePreview = mask, Theme = theme, Key = key == "J" ? null : key,
+                Mods = mods == 3 ? 0 : mods, Rest = rest, Still = still };
         }
 
         internal static string Clean(string value)
@@ -68,7 +95,7 @@ namespace FocusMark
                 {
                     if (stream.Length > 64 * 1024) throw new SerializationException();
                     var note = (Note)json.ReadObject(stream);
-                    if (note == null || (note.Text == null ? !note.Bottom && !note.HidePreview && note.Theme == null && note.Key == null && note.Rest == null : !Note.Valid(note.Text)))
+                    if (note == null || (note.Text == null ? !note.HasOptions : !Note.Valid(note.Text)))
                         throw new SerializationException();
                     Current = note;
                     return Current.Text;
@@ -89,26 +116,19 @@ namespace FocusMark
         internal void Save(string text)
         {
             if (!Note.Valid(text)) throw new ArgumentException("备注应为 1–200 字。");
-            Commit(new Note(text, Current.Bottom, Current.HidePreview, Current.Theme, Current.Key, Current.Rest));
+            Commit(Current.WithText(text));
         }
 
-        internal void Clear() { Commit(new Note(null, Current.Bottom, Current.HidePreview, Current.Theme, Current.Key, Current.Rest)); }
+        internal void Clear() { Commit(Current.WithText(null)); }
 
-        internal void SetOptions(bool bottom, bool hidePreview)
+        internal void Configure(int dock, int offset, bool mask, string theme, string key, int mods, string rest, bool still)
         {
-            Commit(new Note(Current.Text, bottom, hidePreview, Current.Theme, Current.Key, Current.Rest));
-        }
-
-        internal void Configure(bool bottom, bool mask, string theme, string letter, string rest)
-        {
-            if (rest != null && rest != "edge" && rest != "hidden") throw new ArgumentException("请选择收纳方式。");
-            if (letter == null || letter.Length != 1 || letter[0] < 'A' || letter[0] > 'Z') throw new ArgumentException("请选择 A–Z。");
-            Commit(new Note(Current.Text, bottom, mask, theme, letter == "J" ? null : letter, rest));
+            Commit(Current.WithOptions(dock, offset, mask, theme, key, mods, rest, still));
         }
 
         void Commit(Note next)
         {
-            if (next.Text == null && !next.Bottom && !next.HidePreview && next.Theme == null && next.Key == null && next.Rest == null)
+            if (next.Text == null && !next.HasOptions)
             {
                 try
                 {

@@ -81,20 +81,24 @@ internal static class Tests
             Directory.CreateDirectory(root);
             File.WriteAllText(file, "{\"text\":\"legacy\"}");
             Check(store.Load(out warning) == "legacy" && !store.Current.Bottom && !store.Current.HidePreview, "legacy note uses default options");
-            store.SetOptions(true, true);
+            store.Configure(1, 0, true, null, "J", 3, null, false);
             var reopened = new NoteStore(root);
             Check(reopened.Load(out warning) == "legacy" && reopened.Current.Bottom && reopened.Current.HidePreview, "options survive restart with note");
             using (File.Open(file, FileMode.Open, FileAccess.Read, FileShare.Read))
             {
-                try { store.SetOptions(false, false); throw new Exception("expected sharing violation"); } catch (IOException) { }
+                try { store.Configure(0, 0, false, null, "J", 3, null, false); throw new Exception("expected sharing violation"); } catch (IOException) { }
                 Check(store.Current.Bottom && store.Current.HidePreview && store.Current.Text == "legacy", "failed settings write preserves committed state");
             }
             store.Save("again");
             Check(reopened.Load(out warning) == "again" && reopened.Current.Bottom && reopened.Current.HidePreview, "saving new text preserves settings");
             store.Clear();
             Check(reopened.Load(out warning) == null && warning == null && reopened.Current.HidePreview && reopened.Current.Bottom && !File.ReadAllText(file).Contains("again"), "clear removes text and preserves settings on restart");
-            store.SetOptions(false, false);
+            store.Configure(0, 0, false, null, "J", 3, null, false);
             Check(!File.Exists(file) && !store.Current.HidePreview && !store.Current.Bottom, "empty state with default options removes file");
+            store.Configure(3, 32, false, null, "F8", 6, "edge", true);
+            store.Save("dock across restart"); store.Clear();
+            Check(reopened.Load(out warning) == null && warning == null && reopened.Current.Dock == 3 && reopened.Current.Offset == 32 && reopened.Current.Modifiers == 6 && reopened.Current.Letter == "F8" && reopened.Current.Still, "custom dock, motion and function chord survive save, clear and restart");
+            Check(Note.VirtualKey("F8") == 119 && Note.VirtualKey("7") == 55 && Note.VirtualKey("F12") == 0 && Note.Chord(6, "F8") == "Ctrl+Shift+F8", "shortcut naming and supported key boundaries");
             Check(WindowTarget.Capture(IntPtr.Zero) == null, "missing foreground rejected");
             WindowIdentity();
         }

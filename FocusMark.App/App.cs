@@ -58,8 +58,6 @@ namespace FocusMark
             string themeError = LoadTheme(store.Current.Theme);
             handle = new WindowInteropHelper(panel).EnsureHandle();
             HwndSource.FromHwnd(handle).AddHook(Messages);
-            int corner = 3; // DWMWCP_ROUNDSMALL
-            DwmSetWindowAttribute(handle, 33, ref corner, sizeof(int));
             screen = Forms.Screen.FromHandle(WindowTarget.GetForegroundWindow());
             rebind = Find<CheckBox>("Rebind");
             input = Find<TextBox>("Input");
@@ -72,7 +70,7 @@ namespace FocusMark
             Find<Button>("Save").Click += delegate { Save(); };
             Find<Button>("Pill").Click += delegate {
                 ShowView(View.Details);
-                if (SystemParameters.ClientAreaAnimation)
+                if (!store.Current.Still && SystemParameters.ClientAreaAnimation)
                 {
                     var details = Find<FrameworkElement>("Details");
                     var duration = TimeSpan.FromMilliseconds(130);
@@ -113,7 +111,7 @@ namespace FocusMark
             if (appIcon == IntPtr.Zero) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
             tray = new Forms.NotifyIcon { Text = "FocusMark", Icon = System.Drawing.Icon.FromHandle(appIcon), ContextMenuStrip = menu, Visible = true };
             tray.DoubleClick += delegate { Edit(IntPtr.Zero); };
-            string keyError = CommitWithKey(store.Current.Letter, delegate { });
+            string keyError = CommitWithKey(store.Current.Letter, store.Current.Modifiers, delegate { });
             if (note != null) ShowView(View.Pill);
             if (themeError != null) Alert(themeError + "\n已使用默认深色。请在托盘“选项 → 外观”中重新选择。");
             if (warning != null) Alert(warning);
@@ -124,12 +122,12 @@ namespace FocusMark
             }
         }
 
-        string CommitWithKey(string letter, Action commit)
+        string CommitWithKey(string letter, int mods, Action commit)
         {
-            bool register = hotkeyId == 0 || letter != store.Current.Letter;
+            bool register = hotkeyId == 0 || letter != store.Current.Letter || mods != store.Current.Modifiers;
             int nextId = hotkeyId == 1 ? 2 : 1;
-            if (register && !RegisterHotKey(handle, nextId, 0x4003, letter[0]))
-                return "Ctrl+Alt+" + letter + " 注册失败，可能已被占用。";
+            if (register && !RegisterHotKey(handle, nextId, 0x4000 | mods, Note.VirtualKey(letter)))
+                return Note.Chord(mods, letter) + " 注册失败，可能已被占用。";
             try
             {
                 commit();
@@ -145,7 +143,7 @@ namespace FocusMark
                 if (hotkeyId != 0) UnregisterHotKey(handle, hotkeyId);
                 hotkeyId = nextId;
             }
-            tray.Text = "FocusMark · Ctrl+Alt+" + letter;
+            tray.Text = "FocusMark · " + Note.Chord(mods, letter);
             return null;
         }
 
@@ -186,7 +184,7 @@ namespace FocusMark
 
         IntPtr Messages(IntPtr h, int msg, IntPtr w, IntPtr l, ref bool handled)
         {
-            if (msg == 0x0312 && hotkeyId != 0 && w.ToInt32() == hotkeyId) { Edit(WindowTarget.GetForegroundWindow()); handled = true; }
+            if (msg == 0x0312 && hotkeyId != 0 && w.ToInt32() == hotkeyId) { if (!recordingKey) Edit(WindowTarget.GetForegroundWindow()); handled = true; }
             if (msg == 0x02E0 || msg == 0x001A) Dispatcher.BeginInvoke(new Action(Place), DispatcherPriority.Loaded);
             return IntPtr.Zero;
         }
@@ -296,11 +294,15 @@ namespace FocusMark
         {
             bool edge = store.Current.Rest == "edge";
             var pill = Find<Button>("Pill");
-            pill.Height = edge ? 18 : 32;
+            bool upright = edge && store.Current.Dock >= 2;
+            pill.Height = upright ? 64 : edge ? 18 : 32;
+            var grip = Find<Border>("Grip");
+            grip.Width = upright ? 4 : 30;
+            grip.Height = upright ? 30 : 4;
             Find<FrameworkElement>("Grip").Visibility = edge ? Visibility.Visible : Visibility.Collapsed;
             Find<FrameworkElement>("Summary").Visibility = edge ? Visibility.Collapsed : Visibility.Visible;
             Find<TextBlock>("Preview").Text = edge ? null : store.Current.HidePreview ? "查看备注" : note;
-            if (view == View.Pill) panel.Width = edge ? 64 : store.Current.HidePreview ? 100 : theme.Width;
+            if (view == View.Pill) panel.Width = upright ? 18 : edge ? 64 : store.Current.HidePreview ? 100 : theme.Width;
         }
 
         void ShowView(View next)
@@ -311,6 +313,9 @@ namespace FocusMark
             // can become an editor in place without hiding and showing the HWND again.
             if (next == View.Pill && panel.IsActive) panel.Hide();
             view = next;
+            var shell = Find<Border>("Shell");
+            shell.CornerRadius = new CornerRadius(next == View.Pill ? 16 : 10);
+            shell.SetResourceReference(Border.BackgroundProperty, next == View.Pill ? "PillSurface" : "Panel");
             foreach (var item in new[] { View.Pill, View.Editor, View.Details })
                 Find<FrameworkElement>(item.ToString()).Visibility = item == next ? Visibility.Visible : Visibility.Collapsed;
             Find<TextBlock>("FullNote").Text = next == View.Details ? note : null;
@@ -335,10 +340,10 @@ namespace FocusMark
             RectPx rect;
             if (screen == null || !panel.IsVisible || !GetWindowRect(handle, out rect)) return;
             var work = screen.WorkingArea;
-            int x = work.Left + Math.Max(0, (work.Width - (rect.Right - rect.Left)) / 2);
             int gap = view == View.Pill && store.Current.Rest == "edge" ? 0 : 8;
-            int y = store.Current.Bottom ? Math.Max(work.Top, work.Bottom - (rect.Bottom - rect.Top) - gap) : work.Top + gap;
-            RoundWindow(rect);
+            var point = DockPoint(store.Current.Dock, store.Current.Offset, work.Width - (rect.Right-rect.Left), work.Height - (rect.Bottom-rect.Top), gap);
+            int x = work.Left + (int)Math.Round(point.X);
+            int y = work.Top + (int)Math.Round(point.Y);
             if (rect.Left == x && rect.Top == y) return;
             SetWindowPos(handle, IntPtr.Zero, x, y, 0, 0, 0x0015); // NOSIZE | NOZORDER | NOACTIVATE
         }
@@ -361,6 +366,6 @@ namespace FocusMark
         [DllImport("user32")] static extern int SetWindowLong(IntPtr h, int index, int value);
         [DllImport("user32")] static extern bool RegisterHotKey(IntPtr h, int id, int modifiers, int key);
         [DllImport("user32")] static extern bool UnregisterHotKey(IntPtr h, int id);
-        [DllImport("dwmapi")] static extern int DwmSetWindowAttribute(IntPtr h, int attr, ref int value, int size);
+
     }
 }

@@ -52,11 +52,6 @@ namespace FocusMark
         internal void Apply(ResourceDictionary resources)
         {
             bool light = Base == "light";
-            var landscape = new LinearGradientBrush(
-                (Color)ColorConverter.ConvertFromString(light ? "#E0EDE5" : "#244036"),
-                (Color)ColorConverter.ConvertFromString(light ? "#EFF0E7" : "#202831"), 22);
-            landscape.Freeze();
-            resources["Landscape"] = landscape;
             Brush(resources,"Panel",light ? "#F8F7F2" : "#22252B");
             Brush(resources,"Text",light ? "#212B27" : "#F1F2F4");
             Brush(resources,"Secondary",light ? "#4A5852" : "#BEC5CF");

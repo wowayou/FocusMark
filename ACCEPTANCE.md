@@ -2,7 +2,16 @@
 
 **主闭环通过真实 Windows 桌面自动化验收。** 测试在 Windows 11 x64（10.0.26200.0）交互会话 1 中运行，由 WSL2 调用 Windows PowerShell。使用一个 125% 缩放的显示器、Windows Explorer 托盘、VS Code、Edge 及中文拼音输入法。人工使用体验和多显示器兼容性仍待验证。
 
-## 当前版本 · 可操作的桌面预览
+## 当前版本 · 四边停靠与边缘绘制
+
+交付 EXE 为 74,752 字节，SHA-256 为 `ae3186689e5aec0c1e98cb568ad31e34589b9483402094589902fa6ad11b2d4a`。
+
+- `build.ps1 -Test` 通过 21 项检查。旧版顶部、底部、单字母键配置按原含义载入，新配置在保存文字、完成和重启后保留。
+- `Preferences.ps1 -InitialLetter L` 加载交付程序集，在焦点位于快捷键按钮时发送 Ctrl+Shift+K，验证录入、注册、冲突回滚、锁文件失败回滚和旧键释放。在四条边分别设为 25%，读取实际窗口坐标，偏差在一个物理像素内。对透明角与把手中心分别用 Windows 点命中查询验证。
+- 单屏 125% 显示下，80 × 22 像素的横向把手渲染样本含 112 个半透明像素、50 个中间透明度级别。已检查放大图和设置页渲染。预览使用纯色工作区并随四边位置变化。[圆角五倍放大](assets/edge-zoom.png) · [新版设置](assets/settings.png)
+- 宿主已有一个改名运行的 FocusMark 持有单实例锁。独立副本仅调整互斥体名称及 EXE 文件名，`Desktop.ps1 -Letter K -Ime -Cycles 8` 完整通过全局唤出、窗口返回、最小化还原、重启恢复及中文输入。8 次热唤出中位数 69 ms、最慢 106 ms，空闲工作集 90,849,280 字节。最终文件独立启动和混合 DPI 仍待复验。
+
+## 上一版 · 可操作的桌面预览
 
 设置页参考了 PowerToys 对置顶工具的设置分组，停靠预览延续岛仔按收纳方向表达位置的思路。点击示例可试用展开和收起。位置、文字显示、快捷键和主题均在「应用设置」时一起保存。[PowerToys 设置页源码](https://github.com/microsoft/PowerToys/blob/main/src/settings-ui/Settings.UI/SettingsXAML/Views/AlwaysOnTopPage.xaml) · [深色](assets/settings.png) · [浅色](assets/settings-light.png) · [记录面板](assets/editor.png)
 

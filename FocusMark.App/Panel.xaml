@@ -1,5 +1,5 @@
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
- Title="FocusMark" WindowStyle="None" ResizeMode="NoResize" SizeToContent="Height" Width="360" ShowInTaskbar="False" ShowActivated="False" Topmost="True" Background="{DynamicResource Panel}" Foreground="{DynamicResource Text}" FontFamily="Segoe UI, Microsoft YaHei UI" FontSize="14" UseLayoutRounding="True">
+ Title="FocusMark" WindowStyle="None" AllowsTransparency="True" ResizeMode="NoResize" SizeToContent="Height" Width="360" ShowInTaskbar="False" ShowActivated="False" Topmost="True" Background="Transparent" Foreground="{DynamicResource Text}" FontFamily="Segoe UI, Microsoft YaHei UI" FontSize="14" UseLayoutRounding="True">
  <Window.Resources>
   <Geometry x:Key="Bookmark">M1,1 H11 V16 L6,12.7 L1,16 Z M4,5 V6.5 H8 V5 Z</Geometry>
   <Style TargetType="Button">
@@ -10,9 +10,10 @@
    </ControlTemplate></Setter.Value></Setter>
   </Style>
  </Window.Resources>
- <Grid>
-  <Button Name="Pill" Height="32" Visibility="Collapsed" Padding="12,0" Background="{DynamicResource PillSurface}" ToolTip="点击查看 · 中键隐藏" AutomationProperties.Name="展开备注">
-   <Grid><Border Name="Grip" Visibility="Collapsed" Width="30" Height="4" CornerRadius="2" Background="{DynamicResource Mint}"/><DockPanel Name="Summary"><Path DockPanel.Dock="Left" Data="{StaticResource Bookmark}" Fill="{DynamicResource Mint}" Width="12" Height="17" Margin="0,0,8,0" VerticalAlignment="Center"/><TextBlock Name="Preview" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/></DockPanel></Grid>
+ <Border Name="Shell" Background="{DynamicResource Panel}" CornerRadius="10"><Grid>
+  <Button Name="Pill" Height="32" Visibility="Collapsed" Padding="0" Background="Transparent" ToolTip="点击查看 · 中键隐藏" AutomationProperties.Name="展开备注">
+   <Button.Template><ControlTemplate TargetType="Button"><Border Background="Transparent" CornerRadius="16"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border></ControlTemplate></Button.Template>
+   <Grid><Border Name="Grip" Visibility="Collapsed" Width="30" Height="4" CornerRadius="2" Background="{DynamicResource Mint}"/><DockPanel Name="Summary" Margin="12,0"><Path DockPanel.Dock="Left" Data="{StaticResource Bookmark}" Fill="{DynamicResource Mint}" Width="12" Height="17" Margin="0,0,8,0" VerticalAlignment="Center"/><TextBlock Name="Preview" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/></DockPanel></Grid>
   </Button>
   <StackPanel Name="Editor" Visibility="Collapsed" Margin="18,15">
    <DockPanel Margin="0,0,0,9"><Path DockPanel.Dock="Left" Data="{StaticResource Bookmark}" Fill="{DynamicResource Mint}" Width="12" Height="17" Margin="0,0,8,0" VerticalAlignment="Center"/><Label Target="{Binding ElementName=Input}" Content="下一步做什么？" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource Text}" Padding="0"/></DockPanel>
@@ -27,5 +28,5 @@
    <TextBlock Name="Status" Margin="0,7,0,0" FontSize="12" Foreground="{DynamicResource Warning}" TextWrapping="Wrap"/>
    <DockPanel Margin="0,13,0,0"><Button DockPanel.Dock="Right" Name="Fold" Content="收起" Background="{DynamicResource Panel}"/><StackPanel Orientation="Horizontal"><Button Name="Return" Content="返回原窗口" Background="{DynamicResource Primary}"/><Button Name="Edit" Content="编辑" Margin="6,0"/><Button Name="Done" Content="完成" Background="{DynamicResource Panel}" ToolTip="清除当前备注"/></StackPanel></DockPanel>
   </StackPanel>
- </Grid>
+ </Grid></Border>
 </Window>
