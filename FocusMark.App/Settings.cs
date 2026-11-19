@@ -51,21 +51,31 @@ namespace FocusMark
             catch (UnauthorizedAccessException e) { report(e.Message); }
             if (palette.SelectedIndex < 0) palette.SelectedIndex = 0;
             Func<string> idSelected = () => (string)((ComboBoxItem)palette.SelectedItem).Tag;
+            w.MaxHeight = SystemParameters.WorkArea.Height;
+            w.MaxWidth = SystemParameters.WorkArea.Width;
+            bool expanded = false;
+            var trySample = (Button)w.FindName("TrySample");
             Action preview = delegate {
                 var sample = (Border)w.FindName("Sample");
                 bool tab = edge.IsChecked == true, off = hidden.IsChecked == true;
-                sample.VerticalAlignment = position.SelectedIndex == 1 ? VerticalAlignment.Bottom : VerticalAlignment.Top;
-                sample.Margin = new Thickness(0,tab ? 0 : 5,0,tab ? 0 : 5);
-                sample.Visibility = off ? Visibility.Collapsed : Visibility.Visible;
-                sample.Height = tab ? 18 : 32;
-                sample.Width = tab ? 64 : mask.IsChecked == true ? 100 : previewTheme.Width;
-                ((Border)w.FindName("SampleGrip")).Visibility = tab ? Visibility.Visible : Visibility.Collapsed;
-                ((DockPanel)w.FindName("SampleSummary")).Visibility = tab ? Visibility.Collapsed : Visibility.Visible;
+                trySample.VerticalAlignment = position.SelectedIndex == 1 ? VerticalAlignment.Bottom : VerticalAlignment.Top;
+                trySample.Margin = new Thickness(0,tab ? 0 : 5,0,tab ? 0 : 5);
+                trySample.Visibility = off ? Visibility.Collapsed : Visibility.Visible;
+                ((StackPanel)w.FindName("HiddenHint")).Visibility = off ? Visibility.Visible : Visibility.Collapsed;
+                ((TextBlock)w.FindName("RecallHint")).Text = "按 " + letter.SelectedItem + " 找回";
+                sample.Height = expanded ? 64 : tab ? 18 : 32;
+                sample.Width = expanded ? 252 : tab ? 64 : mask.IsChecked == true ? 100 : previewTheme.Width;
+                sample.CornerRadius = new CornerRadius(expanded ? 10 : 16);
+                ((StackPanel)w.FindName("SampleNote")).Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
+                ((Border)w.FindName("SampleGrip")).Visibility = tab && !expanded ? Visibility.Visible : Visibility.Collapsed;
+                ((DockPanel)w.FindName("SampleSummary")).Visibility = tab || expanded ? Visibility.Collapsed : Visibility.Visible;
                 ((TextBlock)w.FindName("SampleLabel")).Text = mask.IsChecked == true ? "查看备注" : "继续读下一段";
                 mask.IsEnabled = !off && !tab;
-                ((TextBlock)w.FindName("Help")).Text = off ? "按 " + letter.SelectedItem + " 或从托盘打开，即可找回备注。" : tab ? "点击屏幕边缘的短条，即可展开全文。" : "点击胶囊查看全文，中键点击可暂时隐藏。";
+                ((TextBlock)w.FindName("Help")).Text = off ? "保存后从桌面收起，也可从托盘打开。" : expanded ? "再次点击示例即可收起。" : tab ? "点击预览中的短条，试试看如何找回备注。" : "点击预览中的胶囊，试试看展开后的样子。";
             };
-            regular.Checked += delegate { preview(); }; edge.Checked += delegate { preview(); }; hidden.Checked += delegate { preview(); };
+            trySample.Click += delegate { expanded = !expanded; preview(); };
+            RoutedEventHandler changeMode = delegate { expanded = false; preview(); };
+            regular.Checked += changeMode; edge.Checked += changeMode; hidden.Checked += changeMode;
             position.SelectionChanged += delegate { preview(); }; letter.SelectionChanged += delegate { preview(); };
             mask.Click += delegate { preview(); };
             palette.SelectionChanged += delegate {

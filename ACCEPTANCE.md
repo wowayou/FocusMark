@@ -2,7 +2,17 @@
 
 **主闭环通过真实 Windows 桌面自动化验收。** 测试在 Windows 11 x64（10.0.26200.0）交互会话 1 中运行，由 WSL2 调用 Windows PowerShell。使用一个 125% 缩放的显示器、Windows Explorer 托盘、VS Code、Edge 及中文拼音输入法。人工使用体验和多显示器兼容性仍待验证。
 
-## 当前版本 · 设置预览修正与复验
+## 当前版本 · 可操作的桌面预览
+
+设置页参考了 PowerToys 对置顶工具的设置分组，停靠预览延续岛仔按收纳方向表达位置的思路。点击示例可试用展开和收起。位置、文字显示、快捷键和主题均在「应用设置」时一起保存。[PowerToys 设置页源码](https://github.com/microsoft/PowerToys/blob/main/src/settings-ui/Settings.UI/SettingsXAML/Views/AlwaysOnTopPage.xaml) · [深色](assets/settings.png) · [浅色](assets/settings-light.png) · [记录面板](assets/editor.png)
+
+交付文件为 71,168 字节，SHA-256 为 `f7b76deff99b77eebc1931f0fe018cf802ad1c6fc08fa0ee618c8c68a4c69572`。
+
+- `build.ps1 -Test` 通过 19 项检查。`Preferences.ps1 -InitialLetter L` 在独立临时配置下加载交付程序集，通过预览展开和收起、隐藏恢复提示、主题预览、保存和取消、改键冲突及粘贴边界检查。
+- Windows 实际鼠标点击预览可展开并收起。点击停靠位置可打开下拉框，Esc 收起列表并保持设置页打开。再次打开后，方向键和 Enter 成功选择底部。已检查深色与浅色设置、展开示例和编辑框的 WPF 渲染截图。
+- 为保留用户正在运行的旧版，完整桌面回归使用仅修改单实例标识和 EXE 文件名的副本，快捷键使用 K。`Desktop.ps1 -Letter K -Ime -Cycles 6` 完整通过。单屏 125% 环境首次唤出 153 ms，6 次热唤出中位数 71 ms、最慢 122 ms，空闲工作集 90,722,304 字节，10.012 秒空闲 CPU 时间增量为 0 ms。交付文件的独立启动流程和混合 DPI 仍待复验。
+
+## 上一版 · 设置预览修正与复验
 
 **Windows 11 单屏 125% 桌面验收通过。** 修正前，切换 248 与 216 逻辑像素的主题时预览保持同宽，贴边示意与实际把手的颜色也有偏差。现在两种胶囊宽度在设置中以相同的 80% 比例展示，贴边示意与实际短条均使用所选主题的强调色。已读回自定义配色 `#77BBFF` 并查看修正后的设置截图。[修正后的预览](assets/settings.png)
 

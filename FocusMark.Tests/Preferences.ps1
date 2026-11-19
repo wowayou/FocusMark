@@ -1,5 +1,5 @@
 ﻿# Run with Windows PowerShell -STA on a desktop with the app's shortcut available.
-param([string]$Exe = "$PSScriptRoot\..\dist\FocusMark.exe")
+param([string]$Exe = "$PSScriptRoot\..\dist\FocusMark.exe", [ValidateSet('J','L')][string]$InitialLetter = 'J')
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName PresentationFramework,WindowsFormsIntegration,System.Windows.Forms
 Add-Type -MemberDefinition @'
@@ -21,7 +21,7 @@ try {
     $null=New-Item "$base\FocusMark\themes" -ItemType Directory -Force
     $pack=Join-Path $base 'FocusMark\themes\ink.json'
     [IO.File]::WriteAllText($pack, '{"version":1,"base":"dark","accent":"#77BBFF","capsuleWidth":248}')
-    [IO.File]::WriteAllText("$base\FocusMark\note.json", '{"text":"Working note","theme":"ink"}')
+    [IO.File]::WriteAllText("$base\FocusMark\note.json", (@{text='Working note';theme='ink';key=$InitialLetter} | ConvertTo-Json -Compress))
     # Explicitly load the build under test, including a WSL share path.
     $assembly=[Reflection.Assembly]::UnsafeLoadFrom((Resolve-Path $Exe).ProviderPath)
     $type=$assembly.GetType('FocusMark.App',$true)
@@ -44,21 +44,27 @@ try {
             $palette.SelectedIndex=2
             $w.FindName('ShowEdge').IsChecked=$true
             if ($sample.Width -ne 64 -or !$w.FindName('SampleGrip').IsVisible -or $w.FindName('SampleGrip').Background.Color -ne $panel.FindName('Grip').Background.Color) {throw 'Edge preview diverges from actual grip'}
+            ClickControl $w 'TrySample'
+            if (!$w.FindName('SampleNote').IsVisible -or $panel.Width -ne 248) {throw 'Preview did not expand independently'}
+            ClickControl $w 'TrySample'
+            if ($w.FindName('SampleNote').IsVisible -or !$w.FindName('SampleGrip').IsVisible) {throw 'Could not fold preview'}
+            $w.FindName('ShowNone').IsChecked=$true
+            if ($w.FindName('TrySample').IsVisible -or !$w.FindName('HiddenHint').IsVisible) {throw 'Hidden preview inaccurate'}
             $w.FindName('ShowPill').IsChecked=$true
-            Write-Output 'PASS theme width and edge accent track rendered capsule' | Out-Host
+            Write-Output 'PASS interactive preview, fold and hidden recovery hint' | Out-Host
             $w.FindName('Letter').SelectedIndex=10
             if (![Tests.Geometry]::RegisterHotKey([IntPtr]::Zero,124,0x4003,75)) { throw 'K is in use by another app' }
-            try { ClickControl $w 'Apply'; if (!$w.FindName('Error').IsVisible -or $tray.Text -notlike '*+J') {throw 'Conflict replaced original binding'} }
+            try { ClickControl $w 'Apply'; if (!$w.FindName('Error').IsVisible -or $tray.Text -notlike "*+$InitialLetter") {throw 'Conflict replaced original binding'} }
             finally { $null=[Tests.Geometry]::UnregisterHotKey([IntPtr]::Zero,124) }
             $lock=[IO.File]::Open("$base\FocusMark\note.json",'Open','Read','Read')
-            try { ClickControl $w 'Apply'; if (!$w.FindName('Error').IsVisible -or $tray.Text -notlike '*+J') {throw 'Failed write replaced original binding'} }
+            try { ClickControl $w 'Apply'; if (!$w.FindName('Error').IsVisible -or $tray.Text -notlike "*+$InitialLetter") {throw 'Failed write replaced original binding'} }
             finally { $lock.Dispose() }
             $w.FindName('Palette').SelectedIndex=1; ClickControl $w 'Apply'
             if ($tray.Text -notlike '*+K' -or ([IO.File]::ReadAllText("$base\FocusMark\note.json") | ConvertFrom-Json).key -ne 'K') {throw 'Key not saved'}
             if ([Tests.Geometry]::RegisterHotKey([IntPtr]::Zero,124,0x4003,75)) { $null=[Tests.Geometry]::UnregisterHotKey([IntPtr]::Zero,124);throw 'New key is unbound' }
-            if (![Tests.Geometry]::RegisterHotKey([IntPtr]::Zero,124,0x4003,74)) {throw 'Old key is still registered'}
+            if (![Tests.Geometry]::RegisterHotKey([IntPtr]::Zero,124,0x4003,([int][char]$InitialLetter))) {throw 'Old key is still registered'}
             $null=[Tests.Geometry]::UnregisterHotKey([IntPtr]::Zero,124)
-            Write-Output 'PASS new shortcut reserved, old released, collision and write failure preserve J' | Out-Host
+            Write-Output "PASS new shortcut reserved, old released, collision and write failure preserve $InitialLetter" | Out-Host
             if ($panel.Background.Color.ToString() -ne '#FFF8F7F2' -or $panel.Width -ne 216) {throw 'Light palette or width not applied'}
             $saved=[IO.File]::ReadAllText("$base\FocusMark\note.json") | ConvertFrom-Json
             if ($saved.text -ne 'Working note' -or $saved.theme -ne 'light') {throw 'Theme persistence changed note'}
