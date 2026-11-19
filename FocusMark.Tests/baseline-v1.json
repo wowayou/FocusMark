@@ -1,0 +1,69 @@
+{
+  "budgetVersion": 1,
+  "passed": true,
+  "exceeded": [],
+  "limits": {
+    "startupInputIdleMs": 600,
+    "firstFocusMs": 650,
+    "hotP95Ms": 200,
+    "hotMaxMs": 1000,
+    "idleCpuPercentOfOneCore": 0.5,
+    "workingSetBytes": 104857600,
+    "exeBytes": 102400
+  },
+  "measured": {
+    "startupInputIdleMs": 244,
+    "firstFocusMs": 156,
+    "hotP50Ms": 57,
+    "hotP95Ms": 92,
+    "hotMaxMs": 97,
+    "idleCpuPercentOfOneCore": 0,
+    "workingSetBytes": 86224896,
+    "exeBytes": 80384
+  },
+  "raw": {
+    "idleCpuMs": 0,
+    "exeBytes": 80384,
+    "firstFocusMs": 156,
+    "hotSamplesMs": [
+      97,
+      67,
+      73,
+      92,
+      68,
+      62,
+      79,
+      57,
+      62,
+      58,
+      44,
+      49,
+      51,
+      57,
+      51,
+      61,
+      49,
+      52,
+      45,
+      59,
+      61,
+      44,
+      49,
+      49
+    ],
+    "idleWallMs": 10010,
+    "workingSetBytes": 86224896,
+    "startupInputIdleMs": 244
+  },
+  "run": {
+    "utc": "2026-11-19T15:47:22.7815725Z",
+    "exe": "BudgetCheck.exe",
+    "sha256": "2f113b3c74f67bc2237b784f1ad63ad1b0d875dc100858aa1cf836e08688f542",
+    "os": "10.0.26200.0",
+    "logicalCores": 20,
+    "dpi": 120,
+    "screens": 1,
+    "shortcutLetter": "K",
+    "ime": true
+  }
+}

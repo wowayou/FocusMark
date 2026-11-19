@@ -1,6 +1,17 @@
 # Run on an unlocked Windows desktop. Uses disposable profiles and moves focus/mouse.
-param([switch]$Ime, [ValidateSet('J','K')][string]$Letter = 'J', [ValidateRange(0,60)][int]$Cycles = 0, [string]$Code, [string]$Browser = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe")
+param([switch]$Performance, [switch]$Ime, [ValidateSet('J','K')][string]$Letter = 'J', [ValidateRange(0,60)][int]$Cycles = 0, [string]$Code, [string]$Browser = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe")
 $ErrorActionPreference = 'Stop'
+if ($Performance) {
+    if ($PSBoundParameters.ContainsKey('Cycles') -and $Cycles -ne 24) { throw 'Performance budget v1 requires 24 cycles' }
+    $Cycles = 24
+    . "$PSScriptRoot\PerfBudget.ps1"
+}
+# A renamed EXE still owns the same per-session mutex.
+$existing = $null
+if ([Threading.Mutex]::TryOpenExisting('Local\FocusMark.Single',[ref]$existing)) {
+    $existing.Dispose()
+    throw 'Exit FocusMark from its tray menu before starting desktop acceptance'
+}
 if (!$Code) { $Code = Join-Path (Split-Path (Split-Path (Get-Command code.cmd).Source)) 'Code.exe' }
 if (!(Test-Path $Code) -or !(Test-Path $Browser)) { throw 'VS Code and Edge are required' }
 if (Get-Process FocusMark -ErrorAction SilentlyContinue) { throw 'Exit the running FocusMark before testing' }
@@ -111,7 +122,8 @@ function EditorFrom($h) {
     $null = WaitFor 'focused input' { (Item 'Input').Current.HasKeyboardFocus }
     $elapsed = $sw.ElapsedMilliseconds
     if ($elapsed -ge 200) { Write-Host "slow_sample_ms=$elapsed foreground_observed_ms=$foregroundMs focus_probe_ms=$($elapsed-$foregroundMs)" }
-    Write-Output ('hotkey_to_focused_input_ms=' + $elapsed)
+    Write-Host "hotkey_to_focused_input_ms=$elapsed"
+    return $elapsed
 }
 function KillOwned($p) { if ($p -and !$p.HasExited) { & "$env:windir\system32\taskkill.exe" /PID $p.Id /T /F | Out-Null; $null = $p.WaitForExit(5000) } }
 try {
@@ -125,7 +137,8 @@ try {
     $start = [Diagnostics.Stopwatch]::StartNew()
     $app = Launch $appExe '' $true
     if (!$app.WaitForInputIdle(8000)) { throw 'Startup timeout' }
-    Write-Output ('launch_to_first_input_idle_ms=' + $start.ElapsedMilliseconds)
+    $startupMs = $start.ElapsedMilliseconds
+    Write-Output ('launch_to_first_input_idle_ms=' + $startupMs)
     $editor = Launch $Code "--new-window --disable-extensions --disable-updates --user-data-dir=`"$base\code`" `"$base\FocusMark-test.txt`""
     $codeH = WaitFor 'VS Code window' { Handle $editor } 30
     $edge = Launch $Browser "--no-first-run --disable-background-networking --disable-sync --user-data-dir=`"$base\edge`" --app=about:blank"
@@ -135,7 +148,8 @@ try {
     $owned.Add($edge)
     $edgeH = Handle $edge
     Front $codeH
-    EditorFrom $codeH
+    $firstMs = EditorFrom $codeH
+    Write-Output ('first_hotkey_to_focused_input_ms=' + $firstMs)
     (TextValue).SetValue('Continue line 12')
     Key $panel @(13)
     $null = WaitFor 'saved pill' { Item 'Pill' }
@@ -144,7 +158,8 @@ try {
     $box = New-Object Desktop+Bounds
     $null = [Desktop]::GetWindowRect($panel,[ref]$box)
     if ([Math]::Abs(($box.Left+$box.Right)-($screen.WorkingArea.Left+$screen.WorkingArea.Right)) -gt 2) {throw 'Pill not centered'}
-    Write-Output ('dpi={0} pill_pixels={1}x{2} top_offset={3}' -f [Desktop]::GetDpiForWindow($panel),($box.Right-$box.Left),($box.Bottom-$box.Top),($box.Top-$screen.WorkingArea.Top))
+    $measuredDpi = [Desktop]::GetDpiForWindow($panel)
+    Write-Output ('dpi={0} pill_pixels={1}x{2} top_offset={3}' -f $measuredDpi,($box.Right-$box.Left),($box.Bottom-$box.Top),($box.Top-$screen.WorkingArea.Top))
     Front $edgeH
     Key $edgeH @(122) # F11 on the disposable browser window
     $null = WaitFor 'Edge fills monitor' { $null=[Desktop]::GetWindowRect($edgeH,[ref]$box); $box.Top -eq $screen.Bounds.Top -and $box.Bottom -eq $screen.Bounds.Bottom -and $box.Left -eq $screen.Bounds.Left -and $box.Right -eq $screen.Bounds.Right }
@@ -177,7 +192,7 @@ try {
         for ($i=0; $i -lt $Cycles; $i++) {
             Front $edgeH
             try { $measurement = EditorFrom $edgeH } catch { throw "Cycle $($i+1): $_" }
-            $samples += [int](($measurement -split '=')[1])
+            $samples += $measurement
             Key $panel @(27)
             $null = WaitFor 'collapsed after Esc' { Item 'Pill' }
         }
@@ -186,7 +201,11 @@ try {
     }
     $app.Refresh(); $cpu = $app.TotalProcessorTime; $timer = [Diagnostics.Stopwatch]::StartNew()
     Start-Sleep -Seconds 10
-    $app.Refresh(); Write-Output ('idle_wall_ms={0} cpu_ms={1} working_set_bytes={2}' -f $timer.ElapsedMilliseconds,($app.TotalProcessorTime-$cpu).TotalMilliseconds,$app.WorkingSet64)
+    $app.Refresh()
+    $idleWallMs = $timer.ElapsedMilliseconds
+    $idleCpuMs = ($app.TotalProcessorTime-$cpu).TotalMilliseconds
+    $workingSet = $app.WorkingSet64
+    Write-Output ('idle_wall_ms={0} cpu_ms={1} working_set_bytes={2}' -f $idleWallMs,$idleCpuMs,$workingSet)
     $null = WaitFor 'pill after restore' { Item 'Pill' }
     Front $edgeH; EditorFrom $edgeH
     Click 'Rebind'; Click 'Save'
@@ -231,4 +250,27 @@ try {
 } finally {
     foreach ($p in $owned) { KillOwned $p }
     if (Test-Path $base) { try { Remove-Item -LiteralPath $base -Recurse -Force } catch { Write-Warning "Disposable profile still in use: $base" } }
+}
+
+# Reached only when all requested GUI assertions and process cleanup have completed.
+if ($Performance) {
+    $result = Get-PerformanceResult @{
+        startupInputIdleMs=$startupMs; firstFocusMs=$firstMs; hotSamplesMs=$samples
+        idleWallMs=$idleWallMs; idleCpuMs=$idleCpuMs; workingSetBytes=$workingSet; exeBytes=(Get-Item $appExe).Length
+    }
+    $hash = [Security.Cryptography.SHA256]::Create()
+    $stream = [IO.File]::OpenRead($appExe)
+    try { $digest = [BitConverter]::ToString($hash.ComputeHash($stream)).Replace('-','').ToLowerInvariant() }
+    finally { $stream.Dispose(); $hash.Dispose() }
+    $result | Add-Member NoteProperty run ([ordered]@{
+        utc=[DateTime]::UtcNow.ToString('o'); exe=(Split-Path -Leaf $appExe); sha256=$digest
+        os=[Environment]::OSVersion.Version.ToString(); logicalCores=[Environment]::ProcessorCount
+        dpi=$measuredDpi; screens=[Windows.Forms.Screen]::AllScreens.Count; shortcutLetter=$Letter; ime=[bool]$Ime
+    })
+    $dir = New-Item "$PSScriptRoot\..\build\performance" -ItemType Directory -Force
+    $report = Join-Path $dir.FullName ('run-' + [guid]::NewGuid().ToString('N') + '.json')
+    $result | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $report -Encoding UTF8
+    Write-Output "Performance report: $report"
+    if (!$result.passed) { throw ('Performance budget exceeded: ' + ($result.exceeded -join ', ')) }
+    Write-Output 'PASS performance budget v1'
 }

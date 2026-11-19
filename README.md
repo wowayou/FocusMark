@@ -65,6 +65,20 @@
 
 [示例配置](themes/amber.json) · [后续功能取舍报告](ROADMAP.md)
 
+## 性能验收
+
+在已解锁的 Windows 11 x64 桌面退出运行中的 FocusMark，确保已安装 VS Code 和 Edge，并有可用的 Ctrl+Alt+K。在项目目录运行：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\FocusMark.Tests\Desktop.ps1 -Performance -Ime -Letter K
+```
+
+`-Performance` 固定采集 24 次热唤出和至少 10 秒的空闲样本。启动计时到首次输入空闲，唤出计时到自动化确认编辑框获得键盘焦点。空闲 CPU 按进程 CPU 时间除以墙钟时间，表示占用一个逻辑核心的比例。工作集包含共享页。
+
+桌面场景完成后，脚本将原始样本、阈值、环境和 EXE 的 SHA-256 写入 `build/performance/run-*.json`。任一指标超过阈值时返回非零退出码，并列出超标项。功能测试中断时同样返回非零退出码。每次运行使用独立文件名。
+
+[阈值与测量记录](ACCEPTANCE.md) · [基线原始数据](FocusMark.Tests/baseline-v1.json)
+
 ## 从源码构建
 
 在 Windows PowerShell 中进入本目录运行下列命令。`build.ps1` 使用本机 Framework 的 x64 C# 编译器，嵌入 WPF 布局和 DPI 清单，不需要下载包。本机可用的现代 .NET SDK 仅有 3.1 和 5.0，均已停止支持，因此项目选择随 Windows 维护的 .NET Framework 4.8.1。

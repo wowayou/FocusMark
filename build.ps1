@@ -15,5 +15,6 @@ try {
         if ($LASTEXITCODE) { throw 'Test build failed' }
         & .\build\FocusMark.Tests.exe
         if ($LASTEXITCODE) { throw 'Tests failed' }
+        & .\FocusMark.Tests\PerfBudget.Tests.ps1
     }
 } finally { Pop-Location }
