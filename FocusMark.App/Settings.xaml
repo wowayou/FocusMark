@@ -15,7 +15,13 @@
     <Border Height="1" VerticalAlignment="Bottom" Margin="10,0,10,9" Background="{DynamicResource Control}"/>
     <Border HorizontalAlignment="Right" Width="49" Height="32" CornerRadius="4" BorderThickness="1" BorderBrush="{DynamicResource Control}" Margin="0,0,14,0" VerticalAlignment="Center"/>
     <StackPanel VerticalAlignment="Center" Margin="12,0"><Border Background="{DynamicResource Control}" Width="106" Height="5" CornerRadius="2" HorizontalAlignment="Left"/><Border Background="{DynamicResource Control}" Width="70" Height="4" CornerRadius="2" HorizontalAlignment="Left" Margin="0,7,0,0"/></StackPanel>
-    <Border Name="Sample" HorizontalAlignment="Center" Background="{DynamicResource Primary}" CornerRadius="14" Padding="12,3"><TextBlock Name="SampleLabel" Foreground="{DynamicResource Text}" FontSize="12"/></Border>
+    <Border Name="Sample" HorizontalAlignment="Center" Background="{DynamicResource PillSurface}" CornerRadius="16" Padding="12,0">
+     <Border.LayoutTransform><ScaleTransform ScaleX="0.8" ScaleY="0.8"/></Border.LayoutTransform>
+     <Grid>
+      <Border Name="SampleGrip" Width="30" Height="4" CornerRadius="2" Background="{DynamicResource Mint}"/>
+      <DockPanel Name="SampleSummary" HorizontalAlignment="Center" VerticalAlignment="Center"><Path DockPanel.Dock="Left" Data="{DynamicResource Bookmark}" Fill="{DynamicResource Mint}" Width="12" Height="17" Margin="0,0,8,0"/><TextBlock Name="SampleLabel" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/></DockPanel>
+     </Grid>
+    </Border>
    </Grid>
   </Border>
   <UniformGrid Columns="3" Margin="0,12,0,0">

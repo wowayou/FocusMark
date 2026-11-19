@@ -20,7 +20,9 @@ namespace FocusMark
                 w = (Window)XamlReader.Load(src);
             settings = w;
             w.Resources[typeof(Button)] = panel.Resources[typeof(Button)];
-            theme.Apply(w.Resources);
+            w.Resources["Bookmark"] = panel.Resources["Bookmark"];
+            var previewTheme = theme;
+            previewTheme.Apply(w.Resources);
             w.Closed += delegate { settings = null; };
             w.PreviewKeyDown += (s, e) => { if (e.Key == Key.Escape && !((ComboBox)w.FindName("Palette")).IsDropDownOpen && !((ComboBox)w.FindName("Letter")).IsDropDownOpen && !((ComboBox)w.FindName("Position")).IsDropDownOpen) w.Close(); };
             var regular = (RadioButton)w.FindName("ShowPill");
@@ -55,12 +57,11 @@ namespace FocusMark
                 sample.VerticalAlignment = position.SelectedIndex == 1 ? VerticalAlignment.Bottom : VerticalAlignment.Top;
                 sample.Margin = new Thickness(0,tab ? 0 : 5,0,tab ? 0 : 5);
                 sample.Visibility = off ? Visibility.Collapsed : Visibility.Visible;
-                sample.Height = tab ? 14 : 26;
-                sample.Padding = tab ? new Thickness(0) : new Thickness(12,3,12,3);
-                sample.Width = tab ? 52 : double.NaN;
-                var label = (TextBlock)w.FindName("SampleLabel");
-                label.HorizontalAlignment = HorizontalAlignment.Center;
-                label.Text = tab ? "━" : mask.IsChecked == true ? "查看备注" : "继续读下一段";
+                sample.Height = tab ? 18 : 32;
+                sample.Width = tab ? 64 : mask.IsChecked == true ? 100 : previewTheme.Width;
+                ((Border)w.FindName("SampleGrip")).Visibility = tab ? Visibility.Visible : Visibility.Collapsed;
+                ((DockPanel)w.FindName("SampleSummary")).Visibility = tab ? Visibility.Collapsed : Visibility.Visible;
+                ((TextBlock)w.FindName("SampleLabel")).Text = mask.IsChecked == true ? "查看备注" : "继续读下一段";
                 mask.IsEnabled = !off && !tab;
                 ((TextBlock)w.FindName("Help")).Text = off ? "按 " + letter.SelectedItem + " 或从托盘打开，即可找回备注。" : tab ? "点击屏幕边缘的短条，即可展开全文。" : "点击胶囊查看全文，中键点击可暂时隐藏。";
             };
@@ -68,7 +69,13 @@ namespace FocusMark
             position.SelectionChanged += delegate { preview(); }; letter.SelectionChanged += delegate { preview(); };
             mask.Click += delegate { preview(); };
             palette.SelectionChanged += delegate {
-                try { ThemeProfile.Read(idSelected()).Apply(w.Resources); report(null); }
+                try
+                {
+                    previewTheme = ThemeProfile.Read(idSelected());
+                    previewTheme.Apply(w.Resources);
+                    preview();
+                    report(null);
+                }
                 catch (Exception e) { if (!IsThemeError(e)) throw; report(e.Message); }
             };
             ((Button)w.FindName("Cancel")).Click += delegate { w.Close(); };

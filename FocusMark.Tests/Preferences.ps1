@@ -36,7 +36,17 @@ try {
             if ($panel.Width -ne 248 -or $panel.Resources['Mint'].Color.ToString() -ne '#FF77BBFF') {throw 'Saved custom theme did not load'}
             function Settings { ($items | Where-Object Text -eq '选项').PerformClick(); $app.Windows | Where-Object Title -eq 'FocusMark 设置' }
             function ClickControl($window,$name) { $window.FindName($name).RaiseEvent((New-Object Windows.RoutedEventArgs([Windows.Controls.Button]::ClickEvent))) }
-            $w=Settings; $w.FindName('Letter').SelectedIndex=10
+            $w=Settings
+            $sample=$w.FindName('Sample'); $palette=$w.FindName('Palette')
+            if ($sample.Width -ne $panel.Width -or $sample.LayoutTransform.ScaleX -ne 0.8) {throw 'Custom capsule preview size differs from scaled pill'}
+            $palette.SelectedIndex=0
+            if ($sample.Width -ne 216) {throw 'Default width did not update during preview'}
+            $palette.SelectedIndex=2
+            $w.FindName('ShowEdge').IsChecked=$true
+            if ($sample.Width -ne 64 -or !$w.FindName('SampleGrip').IsVisible -or $w.FindName('SampleGrip').Background.Color -ne $panel.FindName('Grip').Background.Color) {throw 'Edge preview diverges from actual grip'}
+            $w.FindName('ShowPill').IsChecked=$true
+            Write-Output 'PASS theme width and edge accent track rendered capsule' | Out-Host
+            $w.FindName('Letter').SelectedIndex=10
             if (![Tests.Geometry]::RegisterHotKey([IntPtr]::Zero,124,0x4003,75)) { throw 'K is in use by another app' }
             try { ClickControl $w 'Apply'; if (!$w.FindName('Error').IsVisible -or $tray.Text -notlike '*+J') {throw 'Conflict replaced original binding'} }
             finally { $null=[Tests.Geometry]::UnregisterHotKey([IntPtr]::Zero,124) }
