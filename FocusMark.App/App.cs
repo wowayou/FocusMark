@@ -17,7 +17,7 @@ namespace FocusMark
 {
     internal sealed class App : Application
     {
-        const int Hotkey = 1;
+        int hotkeyId;
         readonly NoteStore store = new NoteStore(Path.Combine(Environment.GetEnvironmentVariable("LOCALAPPDATA"), "FocusMark"));
         string activeTheme;
         ThemeProfile theme = ThemeProfile.Dark;
@@ -29,7 +29,7 @@ namespace FocusMark
         WindowTarget target, candidate;
         CheckBox rebind;
         string note { get { return store.Current.Text; } }
-        bool composing, registered, exiting;
+        bool composing, exiting;
         enum View { Hidden, Editor, Pill, Details }
         View view;
 
@@ -106,20 +106,58 @@ namespace FocusMark
             var appearance = new Forms.ToolStripMenuItem("外观");
             appearance.DropDownItems.Add("主题");
             appearance.DropDownOpening += delegate { PopulateThemes(appearance); };
-            menu.Items.Add(appearance);
-            menu.Items.Add(bottom);
-            menu.Items.Add(mask);
+            var options = new Forms.ToolStripMenuItem("选项");
+            options.DropDownItems.Add(appearance);
+            options.DropDownItems.Add(bottom);
+            options.DropDownItems.Add(mask);
+            var shortcut = new Forms.ToolStripMenuItem("唤出快捷键");
+            var letters = new Forms.ToolStripComboBox { DropDownStyle = Forms.ComboBoxStyle.DropDownList, AccessibleName = "唤出快捷键" };
+            for (char key = 'A'; key <= 'Z'; key++) letters.Items.Add("Ctrl+Alt+" + key);
+            letters.SelectedIndex = store.Current.Letter[0] - 'A';
+            letters.ComboBox.SelectionChangeCommitted += delegate {
+                string error = ChangeHotkey(((char)('A' + letters.SelectedIndex)).ToString());
+                if (error != null) { letters.SelectedIndex = store.Current.Letter[0] - 'A'; Alert(error); }
+            };
+            shortcut.DropDownItems.Add(letters);
+            options.DropDownItems.Add(shortcut);
+            menu.Items.Add(options);
             menu.Items.Add("退出", null, delegate { exiting = true; Shutdown(); });
             // csc /win32icon stores the application's icon group at resource 32512.
             var appIcon = LoadImage(Marshal.GetHINSTANCE(typeof(App).Module), new IntPtr(32512), 1, 0, 0, 0x8040); // LR_SHARED | LR_DEFAULTSIZE
             if (appIcon == IntPtr.Zero) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
-            tray = new Forms.NotifyIcon { Text = "FocusMark · Ctrl+Alt+J", Icon = System.Drawing.Icon.FromHandle(appIcon), ContextMenuStrip = menu, Visible = true };
+            tray = new Forms.NotifyIcon { Text = "FocusMark", Icon = System.Drawing.Icon.FromHandle(appIcon), ContextMenuStrip = menu, Visible = true };
             tray.DoubleClick += delegate { Edit(IntPtr.Zero); };
-            registered = RegisterHotKey(handle, Hotkey, 0x4003, 0x4A); // NOREPEAT | ALT | CONTROL
+            string keyError = ChangeHotkey(store.Current.Letter);
             if (note != null) ShowView(View.Pill);
-            if (themeError != null) Alert(themeError + "\n已使用默认深色。请在托盘的“外观”菜单重新选择。");
+            if (themeError != null) Alert(themeError + "\n已使用默认深色。请在托盘“选项 → 外观”中重新选择。");
             if (warning != null) Alert(warning);
-            if (!registered) Alert("Ctrl+Alt+J 注册失败，可能已被占用。请从托盘选择“打开”。");
+            if (keyError != null)
+            {
+                tray.Text = "FocusMark · 快捷键未启用";
+                Alert(keyError + "\n可从托盘打开，或进入“选项 → 唤出快捷键”改键。");
+            }
+        }
+
+        string ChangeHotkey(string letter)
+        {
+            if (hotkeyId != 0 && letter == store.Current.Letter) return null;
+            int nextId = hotkeyId == 1 ? 2 : 1;
+            if (!RegisterHotKey(handle, nextId, 0x4003, letter[0]))
+                return "Ctrl+Alt+" + letter + " 注册失败，可能已被占用。";
+            try
+            {
+                if (letter != store.Current.Letter) store.SetKey(letter);
+            }
+            catch (Exception e)
+            {
+                UnregisterHotKey(handle, nextId);
+                if (!(e is IOException || e is UnauthorizedAccessException)) throw;
+                return "快捷键保存失败。\n" + e.Message;
+            }
+            if (hotkeyId != 0) UnregisterHotKey(handle, hotkeyId);
+            hotkeyId = nextId;
+            tray.Text = "FocusMark · Ctrl+Alt+" + letter;
+            return null;
         }
 
         string LoadTheme(string id, bool persist)
@@ -174,7 +212,7 @@ namespace FocusMark
 
         IntPtr Messages(IntPtr h, int msg, IntPtr w, IntPtr l, ref bool handled)
         {
-            if (msg == 0x0312 && w.ToInt32() == Hotkey) { Edit(WindowTarget.GetForegroundWindow()); handled = true; }
+            if (msg == 0x0312 && hotkeyId != 0 && w.ToInt32() == hotkeyId) { Edit(WindowTarget.GetForegroundWindow()); handled = true; }
             if (msg == 0x02E0 || msg == 0x001A) Dispatcher.BeginInvoke(new Action(Place), DispatcherPriority.Loaded);
             return IntPtr.Zero;
         }
@@ -327,7 +365,7 @@ namespace FocusMark
         {
             exiting = true;
             SystemEvents.DisplaySettingsChanged -= DisplayChanged;
-            if (registered) UnregisterHotKey(handle, Hotkey);
+            if (hotkeyId != 0) UnregisterHotKey(handle, hotkeyId);
             if (tray != null) { tray.Visible = false; tray.Icon.Dispose(); tray.ContextMenuStrip.Dispose(); tray.Dispose(); }
             DiscardCandidate();
             DropTarget();

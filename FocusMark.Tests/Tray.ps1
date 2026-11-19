@@ -5,6 +5,7 @@ Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes
 Add-Type -MemberDefinition @'
 [DllImport("user32")] public static extern bool RegisterHotKey(IntPtr h,int id,int mods,int key);
 [DllImport("user32")] public static extern bool UnregisterHotKey(IntPtr h,int id);
+[DllImport("user32")] public static extern IntPtr SendMessage(IntPtr h,int msg,IntPtr w,IntPtr l);
 [DllImport("user32")] public static extern bool SetCursorPos(int x,int y);
 [DllImport("user32")] public static extern void mouse_event(int f,int x,int y,int d,int e);
 [DllImport("user32")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr c);
@@ -19,7 +20,8 @@ function OwnWindow { $root.FindFirst('Children',(By $a::ProcessIdProperty $p.Id)
 function Child($w,$property,$value){ if ($w) {$w.FindFirst('Descendants',(By $property $value))} }
 function IconIn($windowClass){
     $shell=$root.FindFirst('Children',(By $a::ClassNameProperty $windowClass))
-    if($shell){ foreach($el in $shell.FindAll('Descendants',[Windows.Automation.Condition]::TrueCondition)){ if($el.Current.Name -like '*FocusMark*' -and !$el.Current.IsOffscreen){ return $el } } }
+    if ($windowClass -eq 'Shell_TrayWnd') { $shell=Child $shell $a::ClassNameProperty 'TrayNotifyWnd' }
+    if($shell){ foreach($el in $shell.FindAll('Descendants',[Windows.Automation.Condition]::TrueCondition)){ if($el.Current.Name -like '*FocusMark · 快捷键未启用*' -and !$el.Current.IsOffscreen -and $el.Current.BoundingRectangle.Width -gt 0){ return $el } } }
 }
 function Mouse($el,$right){ $r=$el.Current.BoundingRectangle; if($el.Current.IsOffscreen -or $r.Width -le 0){throw "Offscreen: $($el.Current.Name)"}; $null=[Probe.Tray]::SetCursorPos([int]($r.X+$r.Width/2),[int]($r.Y+$r.Height/2)); if($right){$down=8;$up=16}else{$down=2;$up=4}; [Probe.Tray]::mouse_event($down,0,0,0,0); [Probe.Tray]::mouse_event($up,0,0,0,0) }
 function TrayMenu($label){
@@ -34,11 +36,12 @@ function TrayMenu($label){
             if (!$chevron){throw 'Missing tray overflow button'}
             $inv=$null
             if ($chevron.TryGetCurrentPattern([Windows.Automation.InvokePattern]::Pattern,[ref]$inv)) { $inv.Invoke() } else { Mouse $chevron $false }
+            Start-Sleep -Milliseconds 350 # Allow Explorer to finish positioning the overflow flyout.
             $icon=Wait 'overflow icon' { IconIn 'TopLevelWindowForOverflowXamlIsland' }
         }
     }
     Mouse $icon $true
-    $mi=Wait 'FocusMark menu item' { foreach($w in $root.FindAll('Children',(By $a::ProcessIdProperty $p.Id))){$v=Child $w $a::NameProperty $label; if($v){return $v}} }
+    $mi=Wait "FocusMark menu item $label" { foreach($w in $root.FindAll('Children',(By $a::ProcessIdProperty $p.Id))){$v=Child $w $a::NameProperty $label; if($v){return $v}} }
     Mouse $mi $false
 }
 $base=Join-Path ([IO.Path]::GetTempPath()) ('FocusMark-Tray-'+[guid]::NewGuid().ToString('N'))
@@ -51,7 +54,8 @@ try {
     $win=Wait 'conflict dialog' { OwnWindow }; $ok=Wait 'dialog OK' { Child $win $a::AutomationIdProperty '2' }
     $msg=$win.FindAll('Descendants',[Windows.Automation.Condition]::TrueCondition) | Where-Object { $_.Current.Name -like 'Ctrl+Alt+J*' }
     if (!$msg){throw 'Missing conflict explanation'}
-    Mouse $ok $false
+    $null=[Probe.Tray]::SendMessage([IntPtr]$ok.Current.NativeWindowHandle,0xF5,[IntPtr]::Zero,[IntPtr]::Zero)
+    $null=Wait 'dismissed conflict dialog' { !(OwnWindow) }
     Write-Output 'PASS hotkey conflict feedback'
     TrayMenu '打开'; $null=Wait 'fallback editor' { Child (OwnWindow) $a::AutomationIdProperty 'Input' }
     TrayMenu '隐藏'; $null=Wait 'hidden panel' { !(OwnWindow) }

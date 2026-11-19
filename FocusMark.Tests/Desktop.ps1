@@ -1,5 +1,5 @@
 # Run on an unlocked Windows desktop. Uses disposable profiles and moves focus/mouse.
-param([switch]$Ime, [ValidateRange(0,60)][int]$Cycles = 0, [string]$Code, [string]$Browser = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe")
+param([switch]$Ime, [ValidateSet('J','K')][string]$Letter = 'J', [ValidateRange(0,60)][int]$Cycles = 0, [string]$Code, [string]$Browser = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe")
 $ErrorActionPreference = 'Stop'
 if (!$Code) { $Code = Join-Path (Split-Path (Split-Path (Get-Command code.cmd).Source)) 'Code.exe' }
 if (!(Test-Path $Code) -or !(Test-Path $Browser)) { throw 'VS Code and Edge are required' }
@@ -88,9 +88,18 @@ function Click($id, [bool]$middle = $false) {
     else { [Desktop]::mouse_event(2,0,0,0,0); [Desktop]::mouse_event(4,0,0,0,0) }
 }
 function TextValue { (Item 'Input').GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern) }
+function Cleared {
+    $file="$base\FocusMark\note.json"
+    if ($Letter -eq 'J') { return !(Test-Path $file) }
+    try { $stream=[IO.File]::Open($file,'Open','Read',([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete)) }
+    catch [IO.IOException] { return $false }
+    $reader=New-Object IO.StreamReader($stream)
+    try { $saved=$reader.ReadToEnd() | ConvertFrom-Json } finally { $reader.Dispose() }
+    return $null -eq $saved.text -and $saved.key -eq $Letter
+}
 function EditorFrom($h) {
     $sw = [Diagnostics.Stopwatch]::StartNew()
-    Key $h @(17,18,74)
+    Key $h @(17,18,([int][char]$Letter))
     try {
         $script:panel = WaitFor 'editor HWND' { $fg = [Desktop]::GetForegroundWindow(); if ($fg -ne [IntPtr]::Zero -and ($ae::FromHandle($fg)).Current.ProcessId -eq $app.Id) { $fg } }
     } catch {
@@ -109,6 +118,10 @@ try {
     $null = New-Item "$base\code\User" -ItemType Directory -Force
     [IO.File]::WriteAllText("$base\code\User\settings.json", '{"telemetry.telemetryLevel":"off","update.mode":"none","workbench.startupEditor":"none"}')
     [IO.File]::WriteAllText("$base\FocusMark-test.txt", 'FocusMark desktop acceptance')
+    if ($Letter -ne 'J') {
+        $null=New-Item "$base\FocusMark" -ItemType Directory
+        [IO.File]::WriteAllText("$base\FocusMark\note.json",'{"text":null,"key":"K"}')
+    }
     $start = [Diagnostics.Stopwatch]::StartNew()
     $app = Launch $appExe '' $true
     if (!$app.WaitForInputIdle(8000)) { throw 'Startup timeout' }
@@ -195,7 +208,7 @@ try {
     Click 'Pill'
     if ((Item 'FullNote').Current.Name -ne 'Updated note' -or (Item 'Return').Current.IsEnabled) { throw 'Restart state incorrect' }
     Click 'Done'
-    $null = WaitFor 'removed JSON' { !(Test-Path "$base\FocusMark\note.json") }
+    $null = WaitFor 'cleared note' { Cleared }
     Write-Output 'PASS forced exit, restart text recovery, expired target, explicit completion'
     if ($Ime) {
         Add-Type -AssemblyName System.Windows.Forms
@@ -210,7 +223,7 @@ try {
         $word = (TextValue).Current.Value
         if ($word -notmatch '[\u3400-\u9fff]') { throw "Pinyin composition not confirmed in this profile" }
         foreach ($k in 78,73,72,65,79,13) { Key $panel @($k); Start-Sleep -Milliseconds 75 }
-        if (!(Item 'Input').Current.HasKeyboardFocus -or (Test-Path "$base\FocusMark\note.json")) { throw 'IME confirmation saved prematurely' }
+        if (!(Item 'Input').Current.HasKeyboardFocus -or !(Cleared)) { throw 'IME confirmation saved prematurely' }
         Key $panel @(13)
         $null = WaitFor 'save after IME confirmation' { Item 'Pill' }
         Write-Output 'PASS Chinese IME: Pinyin+Space produced Han text, composition Enter kept editor open, next Enter saved'

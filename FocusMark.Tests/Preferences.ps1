@@ -3,6 +3,8 @@ param([string]$Exe = "$PSScriptRoot\..\dist\FocusMark.exe")
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName PresentationFramework,WindowsFormsIntegration,System.Windows.Forms
 Add-Type -MemberDefinition @'
+[DllImport("user32")] public static extern bool RegisterHotKey(IntPtr h,int id,int mods,int key);
+[DllImport("user32")] public static extern bool UnregisterHotKey(IntPtr h,int id);
 [DllImport("user32")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr value);
 [DllImport("user32")] public static extern bool GetWindowRect(IntPtr h, out Rect r);
 [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left, Top, Right, Bottom; }
@@ -28,7 +30,27 @@ try {
             $tray=$type.GetField('tray','NonPublic,Instance').GetValue($app)
             $items=$tray.ContextMenuStrip.Items
             if ($panel.Width -ne 248 -or $panel.Resources['Mint'].Color.ToString() -ne '#FF77BBFF') {throw 'Saved custom theme did not load'}
-            $appearance=$items | Where-Object Text -eq '外观'
+            $options=($items | Where-Object Text -eq '选项').DropDownItems
+            $keyMenu=$options | Where-Object Text -eq '唤出快捷键'
+            $combo=$keyMenu.DropDownItems[0].ComboBox
+            $change=$type.GetMethod('ChangeHotkey',[Reflection.BindingFlags]'NonPublic,Instance')
+            if (![Tests.Geometry]::RegisterHotKey([IntPtr]::Zero,124,0x4003,75)) { throw 'K is in use by another app' }
+            try {
+                if (!$change.Invoke($app,@('K')) -or $tray.Text -notlike '*+J') { throw 'Conflict replaced original binding' }
+            } finally { $null=[Tests.Geometry]::UnregisterHotKey([IntPtr]::Zero,124) }
+            $lock=[IO.File]::Open("$base\FocusMark\note.json",'Open','Read','Read')
+            try {
+                if (!$change.Invoke($app,@('K')) -or $tray.Text -notlike '*+J') { throw 'Failed write replaced original binding' }
+            } finally { $lock.Dispose() }
+            $combo.SelectedIndex=10
+            $commit=$combo.GetType().GetMethod('OnSelectionChangeCommitted',[Reflection.BindingFlags]'NonPublic,Instance')
+            $null=$commit.Invoke($combo,@([EventArgs]::Empty))
+            if ($tray.Text -notlike '*+K' -or ([IO.File]::ReadAllText("$base\FocusMark\note.json") | ConvertFrom-Json).key -ne 'K') { throw 'Menu selection did not persist' }
+            if ([Tests.Geometry]::RegisterHotKey([IntPtr]::Zero,124,0x4003,75)) { $null=[Tests.Geometry]::UnregisterHotKey([IntPtr]::Zero,124);throw 'New key is unbound' }
+            if (![Tests.Geometry]::RegisterHotKey([IntPtr]::Zero,124,0x4003,74)) {throw 'Old key is still registered'}
+            $null=[Tests.Geometry]::UnregisterHotKey([IntPtr]::Zero,124)
+            Write-Output 'PASS new shortcut reserved, old released, collision and write failure preserve J' | Out-Host
+            $appearance=$options | Where-Object Text -eq '外观'
             $appearance.ShowDropDown(); $appearance.HideDropDown()
             ($appearance.DropDownItems | Where-Object Text -eq '浅色 · 纸白').PerformClick()
             if ($panel.Background.Color.ToString() -ne '#FFF8F7F2' -or $panel.Width -ne 216) {throw 'Light palette or width not applied'}
@@ -43,8 +65,8 @@ try {
             ($appearance.DropDownItems | Where-Object Text -eq '深色 · 薄荷').PerformClick()
             if ($panel.Background.Color.ToString() -ne '#FF22252B') {throw 'Default palette not restored'}
             Write-Output 'PASS startup custom theme, light selection, persistence, rejected version, unplug and restore dark' | Out-Host
-            $items | Where-Object Text -eq '隐藏胶囊文字' | ForEach-Object { $_.PerformClick() }
-            $items | Where-Object Text -eq '贴近屏幕底部' | ForEach-Object { $_.PerformClick() }
+            $options | Where-Object Text -eq '隐藏胶囊文字' | ForEach-Object { $_.PerformClick() }
+            $options | Where-Object Text -eq '贴近屏幕底部' | ForEach-Object { $_.PerformClick() }
             $panel.UpdateLayout()
             $h=(New-Object Windows.Interop.WindowInteropHelper($panel)).Handle
             $work=[Windows.Forms.Screen]::FromHandle($h).WorkingArea
@@ -56,7 +78,7 @@ try {
             if (!$panel.FindName('FullNote').IsVisible -or $panel.FindName('FullNote').Text -ne 'Working note') {throw 'Expanded text missing'}
             $panel.FindName('Fold').RaiseEvent((New-Object Windows.RoutedEventArgs([Windows.Controls.Button]::ClickEvent)))
             if (!$panel.FindName('Pill').IsVisible -or $panel.FindName('Preview').Text -ne '查看备注') {throw 'Fold failed'}
-            $items | Where-Object Text -eq '隐藏胶囊文字' | ForEach-Object { $_.PerformClick() }
+            $options | Where-Object Text -eq '隐藏胶囊文字' | ForEach-Object { $_.PerformClick() }
             if ($panel.FindName('Preview').Text -ne 'Working note') {throw 'Preview did not restore'}
             $items | Where-Object Text -eq '打开' | ForEach-Object { $_.PerformClick() }
             $entry=$panel.FindName('Input'); $entry.Text='草稿'; $entry.SelectAll()
