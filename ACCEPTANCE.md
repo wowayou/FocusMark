@@ -2,7 +2,17 @@
 
 **主闭环通过真实 Windows 桌面自动化验收。** 测试在 Windows 11 x64（10.0.26200.0）交互会话 1 中运行，由 WSL2 调用 Windows PowerShell。使用一个 125% 缩放的显示器、Windows Explorer 托盘、VS Code、Edge 及中文拼音输入法。人工使用体验和多显示器兼容性仍待验证。
 
-## 构建和复验
+## 当前版本 · 重新关联与应用图标
+
+本次交付的 `dist/FocusMark.exe` 为 40,448 字节，SHA-256 为 `4343dd116b73cff530705b3736120a4770449b3fdd2d67e3713578fd97ee12b2`。使用交付源码在独立目录执行 `build.ps1 -Test`，13 项检查通过。Windows 图标文件包含 16–256 像素共八种尺寸，PE 文件含图标组资源，托盘从该资源加载图标。
+
+本机旧版正在运行。为保留用户会话，桌面复测使用副本，更换了进程文件名、单实例互斥体名称、托盘识别文字，以及测试快捷键（Ctrl+Alt+K）。应用的编辑、存储、窗口返回和图标代码均与交付源码一致。本轮未直接运行交付 EXE 的完整桌面流程。
+
+- `Desktop.ps1 -Ime` 在 Windows 11 的真实桌面通过。勾选后按 Esc，仍返回 VS Code。普通保存仍返回 VS Code。勾选并保存后，读回的前台窗口句柄与目标 Edge 一致。最小化还原、目标关闭、重启恢复及中文拼音组合输入也通过。
+- `Tray.ps1` 在并行测试实例上验证了冲突提示以及托盘打开、隐藏、退出。两套脚本首次运行分别在前台切换、定位托盘菜单时超时，重跑通过。
+- 并行实例样本为启动至输入空闲 181 ms、首次唤出 277 ms、再次唤出 48–177 ms、空闲工作集 82,620,416 字节。10.011 秒采样期间进程 CPU 时间增量为 0 ms，读数受计时精度限制。
+
+## 初版 MVP 验收（提交 `52b0699`）
 
 从项目根目录在 Windows PowerShell 运行下列命令。本轮从 WSL 使用 `powershell.exe` 和对应脚本的 Windows 绝对路径执行了相同命令。
 
@@ -12,7 +22,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\FocusMark.Tests\Tray.p
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\FocusMark.Tests\Desktop.ps1 -Ime
 ```
 
-三条命令在最终构建上均以 0 退出。构建使用本机 .NET Framework 4.8.1（注册表 Release 533509）。`file dist/FocusMark.exe` 识别为 PE32+ x86-64 Windows GUI 程序。交付文件 SHA-256 为 `547cb468d8ecd8201cdf5aa831606335fe92c209b63969fda7e436d42df7fc10`。重编译可能生成不同哈希。
+三条命令在初版构建上均以 0 退出。构建使用本机 .NET Framework 4.8.1（注册表 Release 533509）。`file dist/FocusMark.exe` 识别为 PE32+ x86-64 Windows GUI 程序。交付文件 SHA-256 为 `547cb468d8ecd8201cdf5aa831606335fe92c209b63969fda7e436d42df7fc10`。重编译可能生成不同哈希。
 
 测试时须退出已有 FocusMark，并保持桌面解锁。桌面脚本给 FocusMark 指定临时数据目录，以临时用户配置启动 VS Code 和 Edge，向测试窗口发送实际快捷键及鼠标点击，以 Windows UI Automation（界面自动化）读取控件或焦点。普通备注由自动化填入，输入法场景单独发送拼音按键。`Tray.ps1` 的托盘展开按钮识别支持本机中文和英文名称。
 
@@ -33,7 +43,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\FocusMark.Tests\Deskto
 | 150% DPI、混合 DPI、显示器热插拔 | **未测**。本次只有一个 125% 显示器，未更改宿主机显示设置。代码处理显示设置变更，跨屏定位仍需第二台显示器验证 |
 | 单条存储和异常写入 | **通过**。存储与窗口测试共 13 条通过。覆盖空白、换行、200/201 个 Unicode 码点、连续覆盖、遗留半写临时文件、锁住正式文件造成替换失败、保留旧文字、重试、损坏 JSON 原始字节隔离、清除和仅保存文字。强制退出实测发生在保存成功后，写入中断使用临时文件构造，未做断电测试 |
 
-## 性能实测
+## 初版性能实测
 
 单次最终桌面验收，宿主机 20 个逻辑处理器。计时使用 `Stopwatch`，CPU 和工作集读取 FocusMark 的进程计数器。结果包含桌面自动化开销。
 

@@ -24,7 +24,8 @@ namespace FocusMark
         TextBox input;
         Forms.NotifyIcon tray;
         Forms.Screen screen;
-        WindowTarget target;
+        WindowTarget target, candidate;
+        CheckBox rebind;
         string note;
         bool composing, registered, exiting;
         enum View { Hidden, Editor, Pill, Details }
@@ -57,6 +58,7 @@ namespace FocusMark
             int corner = 3; // DWMWCP_ROUNDSMALL
             DwmSetWindowAttribute(handle, 33, ref corner, sizeof(int));
             screen = Forms.Screen.FromHandle(WindowTarget.GetForegroundWindow());
+            rebind = Find<CheckBox>("Rebind");
             input = Find<TextBox>("Input");
             input.TextChanged += delegate { UpdateCount(); };
             TextCompositionManager.AddPreviewTextInputStartHandler(input, delegate { composing = true; });
@@ -87,7 +89,10 @@ namespace FocusMark
             menu.Items.Add("打开", null, delegate { Edit(IntPtr.Zero); });
             menu.Items.Add("隐藏", null, delegate { HidePanel(); });
             menu.Items.Add("退出", null, delegate { exiting = true; Shutdown(); });
-            tray = new Forms.NotifyIcon { Text = "FocusMark · Ctrl+Alt+J", Icon = System.Drawing.SystemIcons.Application, ContextMenuStrip = menu, Visible = true };
+            // csc /win32icon stores the application's icon group at resource 32512.
+            var appIcon = LoadImage(Marshal.GetHINSTANCE(typeof(App).Module), new IntPtr(32512), 1, 0, 0, 0x8040); // LR_SHARED | LR_DEFAULTSIZE
+            if (appIcon == IntPtr.Zero) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+            tray = new Forms.NotifyIcon { Text = "FocusMark · Ctrl+Alt+J", Icon = System.Drawing.Icon.FromHandle(appIcon), ContextMenuStrip = menu, Visible = true };
             tray.DoubleClick += delegate { Edit(IntPtr.Zero); };
             registered = RegisterHotKey(handle, Hotkey, 0x4003, 0x4A); // NOREPEAT | ALT | CONTROL
             if (note != null) ShowView(View.Pill);
@@ -107,7 +112,11 @@ namespace FocusMark
             if (view != View.Editor)
             {
                 if (foreground != IntPtr.Zero && foreground != handle) screen = Forms.Screen.FromHandle(foreground);
-                if (note == null && foreground != IntPtr.Zero) target = WindowTarget.Capture(foreground);
+                if (foreground != IntPtr.Zero && foreground != handle &&
+                    (target == null || target.Handle != foreground || !target.Matches()))
+                    candidate = WindowTarget.Capture(foreground);
+                rebind.IsChecked = false;
+                rebind.Visibility = note != null && candidate != null ? Visibility.Visible : Visibility.Collapsed;
                 input.Text = note ?? "";
                 composing = false;
                 ShowView(View.Editor);
@@ -129,7 +138,21 @@ namespace FocusMark
         void Save()
         {
             string text = Note.Clean(input.Text);
+            bool replace = rebind.IsChecked == true;
+            if (replace && (candidate == null || !candidate.Matches()))
+            {
+                rebind.IsChecked = false;
+                rebind.Visibility = Visibility.Collapsed;
+                Alert("刚才的窗口已失效。可以保留原关联并保存文字。");
+                return;
+            }
             if (!Note.Valid(text) || !WriteNote(delegate { store.Save(text); })) return;
+            if (note == null || replace)
+            {
+                DropTarget();
+                target = candidate;
+                candidate = null;
+            }
             note = text;
             ShowView(View.Pill);
         }
@@ -151,7 +174,8 @@ namespace FocusMark
 
         void Collapse() { if (note == null) HidePanel(); else ShowView(View.Pill); }
         void DropTarget() { if (target != null) { target.Dispose(); target = null; } }
-        void HidePanel() { if (note == null) DropTarget(); view = View.Hidden; panel.Hide(); }
+        void DiscardCandidate() { if (candidate != null) { candidate.Dispose(); candidate = null; } }
+        void HidePanel() { DiscardCandidate(); view = View.Hidden; panel.Hide(); }
         void SetStatus(string message)
         {
             var label = Find<TextBlock>("Status");
@@ -161,6 +185,7 @@ namespace FocusMark
 
         void ShowView(View next)
         {
+            if (next != View.Editor) DiscardCandidate();
             if (panel.IsVisible) panel.Hide();
             view = next;
             foreach (var item in new[] { View.Pill, View.Editor, View.Details })
@@ -195,11 +220,13 @@ namespace FocusMark
             exiting = true;
             SystemEvents.DisplaySettingsChanged -= DisplayChanged;
             if (registered) UnregisterHotKey(handle, Hotkey);
-            if (tray != null) { tray.Visible = false; tray.ContextMenuStrip.Dispose(); tray.Dispose(); }
+            if (tray != null) { tray.Visible = false; tray.Icon.Dispose(); tray.ContextMenuStrip.Dispose(); tray.Dispose(); }
+            DiscardCandidate();
             DropTarget();
             base.OnExit(e);
         }
         [StructLayout(LayoutKind.Sequential)] struct RectPx { public int Left, Top, Right, Bottom; }
+        [DllImport("user32", CharSet=CharSet.Unicode, SetLastError=true)] static extern IntPtr LoadImage(IntPtr module, IntPtr name, uint type, int width, int height, uint flags);
         [DllImport("user32")] static extern bool GetWindowRect(IntPtr h, out RectPx rect);
         [DllImport("user32")] static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int w, int height, uint flags);
         [DllImport("user32")] static extern int GetWindowLong(IntPtr h, int index);

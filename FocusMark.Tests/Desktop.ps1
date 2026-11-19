@@ -120,6 +120,7 @@ try {
     Key $edgeH @(122)
     EditorFrom $edgeH
     (TextValue).SetValue('cancel this edit')
+    Click 'Rebind'
     Key $panel @(27)
     Click 'Pill'
     if ((Item 'FullNote').Current.Name -ne 'Continue line 12') { throw 'Esc changed saved note' }
@@ -139,6 +140,17 @@ try {
     $app.Refresh(); $cpu = $app.TotalProcessorTime; $timer = [Diagnostics.Stopwatch]::StartNew()
     Start-Sleep -Seconds 10
     $app.Refresh(); Write-Output ('idle_wall_ms={0} cpu_ms={1} working_set_bytes={2}' -f $timer.ElapsedMilliseconds,($app.TotalProcessorTime-$cpu).TotalMilliseconds,$app.WorkingSet64)
+    $null = WaitFor 'pill after restore' { Item 'Pill' }
+    Front $edgeH; EditorFrom $edgeH
+    Click 'Rebind'; Click 'Save'
+    $null = WaitFor 'saved rebind' { Item 'Pill' }
+    Front $codeH; Click 'Pill'; Click 'Return'
+    $null = WaitFor 'rebound Edge HWND' { [Desktop]::GetForegroundWindow() -eq $edgeH }
+    $null = WaitFor 'pill after rebind' { Item 'Pill' }
+    Front $codeH; EditorFrom $codeH
+    Click 'Rebind'; Click 'Save'
+    $null = WaitFor 'rebound to Code' { Item 'Pill' }
+    Write-Output 'PASS explicit rebind to Edge and back; cancelled rebind preserved VS Code'
     KillOwned $editor
     Click 'Pill'; Click 'Return'
     $null = WaitFor 'invalid-target feedback' { (Item 'Status').Current.Name }

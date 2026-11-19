@@ -16,6 +16,7 @@
   <StackPanel Name="Editor" Visibility="Collapsed" Margin="16,12">
    <Label Target="{Binding ElementName=Input}" Content="下一步做什么？" Foreground="#F1F2F4" Padding="0,0,0,8"/>
    <TextBox Name="Input" AutomationProperties.Name="下一步做什么？" Background="#191C21" Foreground="#F1F2F4" CaretBrush="White" BorderBrush="#738C83" Padding="8,6" TextWrapping="Wrap" MaxLines="5" VerticalScrollBarVisibility="Auto"/>
+   <CheckBox Name="Rebind" Visibility="Collapsed" Margin="0,8,0,0" Foreground="#BEC5CF" Content="将返回目标改为刚才的窗口"/>
    <DockPanel Margin="0,10,0,0"><Button Name="Save" DockPanel.Dock="Right" Content="保存" Background="#405D51"/><TextBlock Name="Count" Foreground="#BEC5CF" VerticalAlignment="Center" FontSize="12"/></DockPanel>
   </StackPanel>
   <StackPanel Name="Details" Visibility="Collapsed" Margin="16,12">
