@@ -15,9 +15,11 @@ namespace FocusMark
 
         [DataMember(Name="theme", EmitDefaultValue=false)] public string Theme { get; private set; }
         [DataMember(Name="key", EmitDefaultValue=false)] public string Key { get; private set; }
+        [DataMember(Name="rest", EmitDefaultValue=false)] public string Rest { get; private set; }
         internal string Letter { get { return Key != null && Key.Length == 1 && Key[0] >= 'A' && Key[0] <= 'Z' ? Key : "J"; } }
-        internal Note(string text = null, bool bottom = false, bool hidePreview = false, string theme = null, string key = null)
+        internal Note(string text = null, bool bottom = false, bool hidePreview = false, string theme = null, string key = null, string rest = null)
         {
+            Rest = rest;
             Key = key;
             Text = text;
             Bottom = bottom;
@@ -66,7 +68,7 @@ namespace FocusMark
                 {
                     if (stream.Length > 64 * 1024) throw new SerializationException();
                     var note = (Note)json.ReadObject(stream);
-                    if (note == null || (note.Text == null ? !note.Bottom && !note.HidePreview && note.Theme == null && note.Key == null : !Note.Valid(note.Text)))
+                    if (note == null || (note.Text == null ? !note.Bottom && !note.HidePreview && note.Theme == null && note.Key == null && note.Rest == null : !Note.Valid(note.Text)))
                         throw new SerializationException();
                     Current = note;
                     return Current.Text;
@@ -87,30 +89,26 @@ namespace FocusMark
         internal void Save(string text)
         {
             if (!Note.Valid(text)) throw new ArgumentException("备注应为 1–200 字。");
-            Commit(new Note(text, Current.Bottom, Current.HidePreview, Current.Theme, Current.Key));
+            Commit(new Note(text, Current.Bottom, Current.HidePreview, Current.Theme, Current.Key, Current.Rest));
         }
 
-        internal void Clear() { Commit(new Note(null, Current.Bottom, Current.HidePreview, Current.Theme, Current.Key)); }
+        internal void Clear() { Commit(new Note(null, Current.Bottom, Current.HidePreview, Current.Theme, Current.Key, Current.Rest)); }
 
         internal void SetOptions(bool bottom, bool hidePreview)
         {
-            Commit(new Note(Current.Text, bottom, hidePreview, Current.Theme, Current.Key));
+            Commit(new Note(Current.Text, bottom, hidePreview, Current.Theme, Current.Key, Current.Rest));
         }
 
-        internal void SetTheme(string theme)
+        internal void Configure(bool bottom, bool mask, string theme, string letter, string rest)
         {
-            Commit(new Note(Current.Text, Current.Bottom, Current.HidePreview, theme, Current.Key));
-        }
-
-        internal void SetKey(string letter)
-        {
+            if (rest != null && rest != "edge" && rest != "hidden") throw new ArgumentException("请选择收纳方式。");
             if (letter == null || letter.Length != 1 || letter[0] < 'A' || letter[0] > 'Z') throw new ArgumentException("请选择 A–Z。");
-            Commit(new Note(Current.Text, Current.Bottom, Current.HidePreview, Current.Theme, letter == "J" ? null : letter));
+            Commit(new Note(Current.Text, bottom, mask, theme, letter == "J" ? null : letter, rest));
         }
 
         void Commit(Note next)
         {
-            if (next.Text == null && !next.Bottom && !next.HidePreview && next.Theme == null && next.Key == null)
+            if (next.Text == null && !next.Bottom && !next.HidePreview && next.Theme == null && next.Key == null && next.Rest == null)
             {
                 try
                 {

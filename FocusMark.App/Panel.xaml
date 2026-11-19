@@ -12,7 +12,7 @@
  </Window.Resources>
  <Grid>
   <Button Name="Pill" Height="32" Visibility="Collapsed" Padding="12,0" Background="{DynamicResource PillSurface}" ToolTip="点击查看 · 中键隐藏" AutomationProperties.Name="展开备注">
-   <DockPanel><Path DockPanel.Dock="Left" Data="{StaticResource Bookmark}" Fill="{DynamicResource Mint}" Width="12" Height="17" Margin="0,0,8,0" VerticalAlignment="Center"/><TextBlock Name="Preview" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/></DockPanel>
+   <Grid><Border Name="Grip" Visibility="Collapsed" Width="30" Height="4" CornerRadius="2" Background="{DynamicResource Mint}"/><DockPanel Name="Summary"><Path DockPanel.Dock="Left" Data="{StaticResource Bookmark}" Fill="{DynamicResource Mint}" Width="12" Height="17" Margin="0,0,8,0" VerticalAlignment="Center"/><TextBlock Name="Preview" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/></DockPanel></Grid>
   </Button>
   <StackPanel Name="Editor" Visibility="Collapsed" Margin="16,12">
    <DockPanel Margin="0,0,0,8"><Path DockPanel.Dock="Left" Data="{StaticResource Bookmark}" Fill="{DynamicResource Mint}" Width="12" Height="17" Margin="0,0,8,0" VerticalAlignment="Center"/><Label Target="{Binding ElementName=Input}" Content="下一步做什么？" FontWeight="SemiBold" Foreground="{DynamicResource Text}" Padding="0"/></DockPanel>
@@ -21,6 +21,7 @@
    <DockPanel Margin="0,10,0,0"><Button Name="Save" DockPanel.Dock="Right" Content="保存 ↵" AutomationProperties.Name="保存" Background="{DynamicResource Primary}"/><TextBlock Name="Count" Foreground="{DynamicResource Secondary}" VerticalAlignment="Center" FontSize="12"/></DockPanel>
   </StackPanel>
   <StackPanel Name="Details" Visibility="Collapsed" Margin="16,12">
+   <StackPanel.RenderTransform><TranslateTransform/></StackPanel.RenderTransform>
    <TextBlock Name="FullNote" TextWrapping="Wrap" FontSize="15" LineHeight="23"/>
    <TextBlock Name="Status" Margin="0,7,0,0" FontSize="12" Foreground="{DynamicResource Warning}" TextWrapping="Wrap"/>
    <StackPanel Orientation="Horizontal" Margin="0,10,0,0"><Button Name="Return" Content="返回原窗口" Background="{DynamicResource Primary}"/><Button Name="Edit" Content="编辑" Margin="7,0"/><Button Name="Fold" Content="收起" Margin="0,0,7,0"/><Button Name="Done" Content="完成" Background="{DynamicResource Panel}" ToolTip="清除当前备注"/></StackPanel>

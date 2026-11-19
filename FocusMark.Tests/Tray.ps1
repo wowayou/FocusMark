@@ -59,6 +59,14 @@ try {
     Write-Output 'PASS hotkey conflict feedback'
     TrayMenu '打开'; $null=Wait 'fallback editor' { Child (OwnWindow) $a::AutomationIdProperty 'Input' }
     TrayMenu '隐藏'; $null=Wait 'hidden panel' { !(OwnWindow) }
+    TrayMenu '选项'
+    $prefs=Wait 'visual settings window' { $w=OwnWindow; if($w -and $w.Current.Name -eq 'FocusMark 设置'){ $w } }
+    Mouse (Child $prefs $a::AutomationIdProperty 'ShowEdge') $false
+    $selected=(Child $prefs $a::AutomationIdProperty 'ShowEdge').GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern)
+    if (!$selected.Current.IsSelected) {throw 'Edge choice not selected'}
+    Mouse (Child $prefs $a::AutomationIdProperty 'Cancel') $false
+    $null=Wait 'settings closed' { !(OwnWindow) }
+    Write-Output 'PASS visual settings from Explorer tray, click edge and cancel'
     TrayMenu '退出'; if(!$p.WaitForExit(3000)){throw 'Tray exit failed'}
     Write-Output 'PASS Explorer tray open, hide and clean exit'
 } finally {

@@ -1,0 +1,36 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="FocusMark 设置" Width="404" SizeToContent="Height" ResizeMode="NoResize" WindowStartupLocation="CenterScreen" Background="{DynamicResource Panel}" Foreground="{DynamicResource Text}" FontFamily="Segoe UI, Microsoft YaHei UI" FontSize="14" UseLayoutRounding="True">
+ <Window.Resources>
+  <Style TargetType="RadioButton">
+   <Setter Property="Cursor" Value="Hand"/><Setter Property="Margin" Value="2,0"/>
+   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="RadioButton">
+    <Border Name="Tile" Background="{DynamicResource Control}" CornerRadius="7" Padding="4,8" BorderBrush="Transparent" BorderThickness="1"><ContentPresenter HorizontalAlignment="Center"/></Border>
+    <ControlTemplate.Triggers><Trigger Property="IsChecked" Value="True"><Setter TargetName="Tile" Property="Background" Value="{DynamicResource Primary}"/><Setter TargetName="Tile" Property="BorderBrush" Value="{DynamicResource Mint}"/></Trigger><Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Tile" Property="BorderBrush" Value="{DynamicResource Text}"/></Trigger></ControlTemplate.Triggers>
+   </ControlTemplate></Setter.Value></Setter>
+  </Style>
+ </Window.Resources>
+ <StackPanel Margin="20,14,20,16">
+  <TextBlock Text="保存后，备注放在哪里？" FontSize="19" FontWeight="SemiBold" Margin="0,0,0,10"/>
+  <Border Height="94" Background="{DynamicResource Field}" BorderBrush="{DynamicResource Control}" BorderThickness="1" CornerRadius="10">
+   <Grid Margin="9,0">
+    <Border Height="1" VerticalAlignment="Bottom" Margin="10,0,10,9" Background="{DynamicResource Control}"/>
+    <Border HorizontalAlignment="Right" Width="49" Height="32" CornerRadius="4" BorderThickness="1" BorderBrush="{DynamicResource Control}" Margin="0,0,14,0" VerticalAlignment="Center"/>
+    <StackPanel VerticalAlignment="Center" Margin="12,0"><Border Background="{DynamicResource Control}" Width="106" Height="5" CornerRadius="2" HorizontalAlignment="Left"/><Border Background="{DynamicResource Control}" Width="70" Height="4" CornerRadius="2" HorizontalAlignment="Left" Margin="0,7,0,0"/></StackPanel>
+    <Border Name="Sample" HorizontalAlignment="Center" Background="{DynamicResource Primary}" CornerRadius="14" Padding="12,3"><TextBlock Name="SampleLabel" Foreground="{DynamicResource Text}" FontSize="12"/></Border>
+   </Grid>
+  </Border>
+  <UniformGrid Columns="3" Margin="0,12,0,0">
+   <RadioButton Name="ShowPill" Content="显示胶囊" Foreground="{DynamicResource Text}"/>
+   <RadioButton Name="ShowEdge" Content="贴边收起" Foreground="{DynamicResource Text}"/>
+   <RadioButton Name="ShowNone" Content="完全隐藏" Foreground="{DynamicResource Text}"/>
+  </UniformGrid>
+  <TextBlock Name="Help" TextWrapping="Wrap" Foreground="{DynamicResource Secondary}" FontSize="12" Margin="0,7,0,12"/>
+  <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="14"/><ColumnDefinition/></Grid.ColumnDefinitions>
+   <StackPanel><Label Content="停靠位置" Target="{Binding ElementName=Position}" Foreground="{DynamicResource Text}" Padding="0,0,0,4"/><ComboBox Name="Position" SelectedIndex="0"><ComboBoxItem Content="屏幕顶部"/><ComboBoxItem Content="屏幕底部"/></ComboBox></StackPanel>
+   <StackPanel Grid.Column="2"><Label Content="唤出快捷键" Target="{Binding ElementName=Letter}" Foreground="{DynamicResource Text}" Padding="0,0,0,4"/><ComboBox Name="Letter"/></StackPanel>
+  </Grid>
+  <CheckBox Name="Mask" Content="胶囊上隐藏备注文字" Foreground="{DynamicResource Text}" Margin="0,12,0,12"/>
+  <DockPanel><Button DockPanel.Dock="Right" Name="Folder" Content="主题目录" Margin="10,0,0,0"/><Label DockPanel.Dock="Left" Content="外观" Target="{Binding ElementName=Palette}" Foreground="{DynamicResource Text}" Padding="0,4,10,0"/><ComboBox Name="Palette" VerticalContentAlignment="Center"/></DockPanel>
+  <TextBlock Name="Error" Foreground="{DynamicResource Warning}" TextWrapping="Wrap" Visibility="Collapsed" Margin="0,8,0,0"/>
+  <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0"><Button Name="Cancel" Content="取消" Margin="0,0,8,0"/><Button Name="Apply" Content="应用设置" IsDefault="True" Background="{DynamicResource Primary}"/></StackPanel>
+ </StackPanel>
+</Window>

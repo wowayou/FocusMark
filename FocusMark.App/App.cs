@@ -15,7 +15,7 @@ using Forms = System.Windows.Forms;
 [assembly: System.Runtime.Versioning.TargetFramework(".NETFramework,Version=v4.8.1")]
 namespace FocusMark
 {
-    internal sealed class App : Application
+    internal sealed partial class App : Application
     {
         int hotkeyId;
         readonly NoteStore store = new NoteStore(Path.Combine(Environment.GetEnvironmentVariable("LOCALAPPDATA"), "FocusMark"));
@@ -55,7 +55,7 @@ namespace FocusMark
             store.Load(out warning);
             using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("Panel.xaml"))
                 panel = (Window)XamlReader.Load(stream);
-            string themeError = LoadTheme(store.Current.Theme, false);
+            string themeError = LoadTheme(store.Current.Theme);
             handle = new WindowInteropHelper(panel).EnsureHandle();
             HwndSource.FromHwnd(handle).AddHook(Messages);
             int corner = 3; // DWMWCP_ROUNDSMALL
@@ -70,7 +70,20 @@ namespace FocusMark
             input.AddHandler(TextCompositionManager.PreviewTextInputEvent, new TextCompositionEventHandler(delegate { composing = false; }), true);
             panel.PreviewKeyDown += Keys;
             Find<Button>("Save").Click += delegate { Save(); };
-            Find<Button>("Pill").Click += delegate { ShowView(View.Details); };
+            Find<Button>("Pill").Click += delegate {
+                ShowView(View.Details);
+                if (SystemParameters.ClientAreaAnimation)
+                {
+                    var details = Find<FrameworkElement>("Details");
+                    var duration = TimeSpan.FromMilliseconds(130);
+                    var fade = new System.Windows.Media.Animation.DoubleAnimation(0.45, 1, duration);
+                    var slide = new System.Windows.Media.Animation.DoubleAnimation(store.Current.Bottom ? 5 : -5, 0, duration);
+                    slide.EasingFunction = new System.Windows.Media.Animation.QuadraticEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut };
+                    fade.FillBehavior = slide.FillBehavior = System.Windows.Media.Animation.FillBehavior.Stop;
+                    details.BeginAnimation(UIElement.OpacityProperty, fade);
+                    ((System.Windows.Media.TranslateTransform)details.RenderTransform).BeginAnimation(System.Windows.Media.TranslateTransform.YProperty, slide);
+                }
+            };
             Find<Button>("Pill").PreviewMouseDown += (s, a) => { if (a.ChangedButton == MouseButton.Middle) { HidePanel(); a.Handled = true; } };
             Find<Button>("Return").Click += async delegate {
                 var original = target;
@@ -93,41 +106,14 @@ namespace FocusMark
             var menu = new Forms.ContextMenuStrip();
             menu.Items.Add("打开", null, delegate { Edit(IntPtr.Zero); });
             menu.Items.Add("隐藏", null, delegate { HidePanel(); });
-            var bottom = new Forms.ToolStripMenuItem("贴近屏幕底部") { Checked = store.Current.Bottom };
-            var mask = new Forms.ToolStripMenuItem("隐藏胶囊文字") { Checked = store.Current.HidePreview };
-            bottom.Click += delegate {
-                if (TryCommit(delegate { store.SetOptions(!store.Current.Bottom, store.Current.HidePreview); }))
-                { bottom.Checked = store.Current.Bottom; Place(); }
-            };
-            mask.Click += delegate {
-                if (TryCommit(delegate { store.SetOptions(store.Current.Bottom, !store.Current.HidePreview); }))
-                { mask.Checked = store.Current.HidePreview; UpdatePreview(); }
-            };
-            var appearance = new Forms.ToolStripMenuItem("外观");
-            appearance.DropDownItems.Add("主题");
-            appearance.DropDownOpening += delegate { PopulateThemes(appearance); };
-            var options = new Forms.ToolStripMenuItem("选项");
-            options.DropDownItems.Add(appearance);
-            options.DropDownItems.Add(bottom);
-            options.DropDownItems.Add(mask);
-            var shortcut = new Forms.ToolStripMenuItem("唤出快捷键");
-            var letters = new Forms.ToolStripComboBox { DropDownStyle = Forms.ComboBoxStyle.DropDownList, AccessibleName = "唤出快捷键" };
-            for (char key = 'A'; key <= 'Z'; key++) letters.Items.Add("Ctrl+Alt+" + key);
-            letters.SelectedIndex = store.Current.Letter[0] - 'A';
-            letters.ComboBox.SelectionChangeCommitted += delegate {
-                string error = ChangeHotkey(((char)('A' + letters.SelectedIndex)).ToString());
-                if (error != null) { letters.SelectedIndex = store.Current.Letter[0] - 'A'; Alert(error); }
-            };
-            shortcut.DropDownItems.Add(letters);
-            options.DropDownItems.Add(shortcut);
-            menu.Items.Add(options);
+            menu.Items.Add("选项", null, delegate { OpenSettings(); });
             menu.Items.Add("退出", null, delegate { exiting = true; Shutdown(); });
             // csc /win32icon stores the application's icon group at resource 32512.
             var appIcon = LoadImage(Marshal.GetHINSTANCE(typeof(App).Module), new IntPtr(32512), 1, 0, 0, 0x8040); // LR_SHARED | LR_DEFAULTSIZE
             if (appIcon == IntPtr.Zero) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
             tray = new Forms.NotifyIcon { Text = "FocusMark", Icon = System.Drawing.Icon.FromHandle(appIcon), ContextMenuStrip = menu, Visible = true };
             tray.DoubleClick += delegate { Edit(IntPtr.Zero); };
-            string keyError = ChangeHotkey(store.Current.Letter);
+            string keyError = CommitWithKey(store.Current.Letter, delegate { });
             if (note != null) ShowView(View.Pill);
             if (themeError != null) Alert(themeError + "\n已使用默认深色。请在托盘“选项 → 外观”中重新选择。");
             if (warning != null) Alert(warning);
@@ -138,34 +124,36 @@ namespace FocusMark
             }
         }
 
-        string ChangeHotkey(string letter)
+        string CommitWithKey(string letter, Action commit)
         {
-            if (hotkeyId != 0 && letter == store.Current.Letter) return null;
+            bool register = hotkeyId == 0 || letter != store.Current.Letter;
             int nextId = hotkeyId == 1 ? 2 : 1;
-            if (!RegisterHotKey(handle, nextId, 0x4003, letter[0]))
+            if (register && !RegisterHotKey(handle, nextId, 0x4003, letter[0]))
                 return "Ctrl+Alt+" + letter + " 注册失败，可能已被占用。";
             try
             {
-                if (letter != store.Current.Letter) store.SetKey(letter);
+                commit();
             }
             catch (Exception e)
             {
-                UnregisterHotKey(handle, nextId);
+                if (register) UnregisterHotKey(handle, nextId);
                 if (!(e is IOException || e is UnauthorizedAccessException)) throw;
-                return "快捷键保存失败。\n" + e.Message;
+                return "设置保存失败。\n" + e.Message;
             }
-            if (hotkeyId != 0) UnregisterHotKey(handle, hotkeyId);
-            hotkeyId = nextId;
+            if (register)
+            {
+                if (hotkeyId != 0) UnregisterHotKey(handle, hotkeyId);
+                hotkeyId = nextId;
+            }
             tray.Text = "FocusMark · Ctrl+Alt+" + letter;
             return null;
         }
 
-        string LoadTheme(string id, bool persist)
+        string LoadTheme(string id)
         {
             try
             {
                 var next = ThemeProfile.Read(id);
-                if (persist && store.Current.Theme != id) store.SetTheme(id);
                 activeTheme = id;
                 theme = next;
                 theme.Apply(panel.Resources);
@@ -175,26 +163,13 @@ namespace FocusMark
             catch (Exception e)
             {
                 if (!(e is IOException || e is InvalidDataException || e is UnauthorizedAccessException)) throw;
-                if (!persist) theme.Apply(panel.Resources);
+                theme.Apply(panel.Resources);
                 return "无法应用主题。\n" + e.Message;
             }
         }
 
-        void PopulateThemes(Forms.ToolStripMenuItem menu)
+        void OpenThemeFolder()
         {
-            while (menu.DropDownItems.Count > 0) menu.DropDownItems[0].Dispose();
-            Action<string,string> add = (label, id) => {
-                var item = new Forms.ToolStripMenuItem(label) { Checked = id == activeTheme };
-                item.Click += delegate { string error = LoadTheme(id, true); if (error != null) Alert(error); };
-                menu.DropDownItems.Add(item);
-            };
-            add("深色 · 薄荷", null);
-            add("浅色 · 纸白", "light");
-            try { foreach (var id in ThemeProfile.Installed()) add(id, id); }
-            catch (IOException e) { menu.DropDownItems.Add(e.Message).Enabled = false; }
-            catch (UnauthorizedAccessException e) { menu.DropDownItems.Add(e.Message).Enabled = false; }
-            menu.DropDownItems.Add(new Forms.ToolStripSeparator());
-            menu.DropDownItems.Add("打开主题目录与示例", null, delegate {
                 try
                 {
                     Directory.CreateDirectory(ThemeProfile.Folder);
@@ -207,7 +182,6 @@ namespace FocusMark
                 catch (IOException e) { Alert(e.Message); }
                 catch (UnauthorizedAccessException e) { Alert(e.Message); }
                 catch (System.ComponentModel.Win32Exception e) { Alert(e.Message); }
-            });
         }
 
         IntPtr Messages(IntPtr h, int msg, IntPtr w, IntPtr l, ref bool handled)
@@ -320,12 +294,18 @@ namespace FocusMark
 
         void UpdatePreview()
         {
-            Find<TextBlock>("Preview").Text = store.Current.HidePreview ? "查看备注" : note;
-            if (view == View.Pill) panel.Width = store.Current.HidePreview ? 100 : theme.Width;
+            bool edge = store.Current.Rest == "edge";
+            var pill = Find<Button>("Pill");
+            pill.Height = edge ? 18 : 32;
+            Find<FrameworkElement>("Grip").Visibility = edge ? Visibility.Visible : Visibility.Collapsed;
+            Find<FrameworkElement>("Summary").Visibility = edge ? Visibility.Collapsed : Visibility.Visible;
+            Find<TextBlock>("Preview").Text = edge ? null : store.Current.HidePreview ? "查看备注" : note;
+            if (view == View.Pill) panel.Width = edge ? 64 : store.Current.HidePreview ? 100 : theme.Width;
         }
 
         void ShowView(View next)
         {
+            if (next == View.Pill && store.Current.Rest == "hidden") { HidePanel(); return; }
             if (next != View.Editor) { EndEdit(); DiscardCandidate(); }
             // Hiding releases editor focus when collapsing. A visible passive capsule
             // can become an editor in place without hiding and showing the HWND again.
@@ -356,7 +336,9 @@ namespace FocusMark
             if (screen == null || !panel.IsVisible || !GetWindowRect(handle, out rect)) return;
             var work = screen.WorkingArea;
             int x = work.Left + Math.Max(0, (work.Width - (rect.Right - rect.Left)) / 2);
-            int y = store.Current.Bottom ? Math.Max(work.Top, work.Bottom - (rect.Bottom - rect.Top) - 8) : work.Top + 8;
+            int gap = view == View.Pill && store.Current.Rest == "edge" ? 0 : 8;
+            int y = store.Current.Bottom ? Math.Max(work.Top, work.Bottom - (rect.Bottom - rect.Top) - gap) : work.Top + gap;
+            RoundWindow(rect);
             if (rect.Left == x && rect.Top == y) return;
             SetWindowPos(handle, IntPtr.Zero, x, y, 0, 0, 0x0015); // NOSIZE | NOZORDER | NOACTIVATE
         }
