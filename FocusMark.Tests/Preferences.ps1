@@ -40,6 +40,19 @@ try {
             if (!$panel.FindName('Pill').IsVisible -or $panel.FindName('Preview').Text -ne '查看备注') {throw 'Fold failed'}
             $items | Where-Object Text -eq '隐藏胶囊文字' | ForEach-Object { $_.PerformClick() }
             if ($panel.FindName('Preview').Text -ne 'Working note') {throw 'Preview did not restore'}
+            $items | Where-Object Text -eq '打开' | ForEach-Object { $_.PerformClick() }
+            $entry=$panel.FindName('Input'); $entry.Text='草稿'; $entry.SelectAll()
+            foreach ($case in @(@(('字'*201),$true),@(('🙂'*200),$false),@(('x'*100000),$true))) {
+                $data=New-Object Windows.DataObject([Windows.DataFormats]::UnicodeText,$case[0])
+                $paste=New-Object Windows.DataObjectPastingEventArgs($data,$false,[Windows.DataFormats]::UnicodeText)
+                $entry.RaiseEvent($paste)
+                if ($paste.CommandCancelled -ne $case[1] -or $entry.Text -ne '草稿') { throw 'Paste boundary or selection handling failed' }
+            }
+            $entry.Text='字'*201
+            if ($panel.FindName('Save').IsEnabled -or $panel.FindName('Count').Text -ne '请再精简 1 字') {throw 'Overflow feedback failed'}
+            $items | Where-Object Text -eq '隐藏' | ForEach-Object { $_.PerformClick() }
+            if ($entry.Text.Length -ne 0 -or $entry.CanUndo) { throw 'Hidden editor retained draft or undo history' }
+            Write-Output 'PASS paste boundaries, overflow feedback and discarded draft cleanup' | Out-Host
             Write-Output 'PASS menu callbacks, bottom window bounds, masked and restored preview, expand and fold' | Out-Host
         } catch { $script:failure=$_ } finally { $app.Shutdown() }
     })

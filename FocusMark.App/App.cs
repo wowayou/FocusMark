@@ -60,7 +60,8 @@ namespace FocusMark
             screen = Forms.Screen.FromHandle(WindowTarget.GetForegroundWindow());
             rebind = Find<CheckBox>("Rebind");
             input = Find<TextBox>("Input");
-            input.TextChanged += delegate { UpdateCount(); };
+            input.TextChanged += delegate { if (view == View.Editor) UpdateCount(); };
+            DataObject.AddPastingHandler(input, CheckPaste);
             TextCompositionManager.AddPreviewTextInputStartHandler(input, delegate { composing = true; });
             TextCompositionManager.AddPreviewTextInputUpdateHandler(input, delegate { composing = true; });
             input.AddHandler(TextCompositionManager.PreviewTextInputEvent, new TextCompositionEventHandler(delegate { composing = false; }), true);
@@ -178,17 +179,42 @@ namespace FocusMark
             return false;
         }
 
+        void CheckPaste(object sender, DataObjectPastingEventArgs e)
+        {
+            string pasted = e.DataObject.GetData(DataFormats.UnicodeText) as string;
+            if (pasted == null) return;
+            // At most two UTF-16 code units per Unicode scalar. Do not insert an
+            // oversized clipboard payload into WPF layout or the undo stack.
+            if (pasted.Length <= Note.Limit * 2)
+            {
+                string draft = input.Text.Remove(input.SelectionStart, input.SelectionLength)
+                    .Insert(input.SelectionStart, pasted);
+                if (Note.Length(Note.Clean(draft)) <= Note.Limit) return;
+            }
+            e.CancelCommand();
+            Find<TextBlock>("Count").Text = "粘贴超出 200 字，请缩短后再试";
+        }
+
         void UpdateCount()
         {
-            string text = Note.Clean(input.Text);
-            Find<TextBlock>("Count").Text = Note.Length(text) + " / 200   ·   Esc 取消";
-            Find<Button>("Save").IsEnabled = Note.Valid(text);
+            int length = Note.Length(Note.Clean(input.Text));
+            Find<TextBlock>("Count").Text = length > Note.Limit ? "请再精简 " + (length - Note.Limit) + " 字" : length + " / 200   ·   Esc 取消";
+            Find<Button>("Save").IsEnabled = length > 0 && length <= Note.Limit;
+        }
+
+        void EndEdit()
+        {
+            if (view != View.Editor) return;
+            input.IsUndoEnabled = false;
+            input.Clear();
+            input.IsUndoEnabled = true;
+            composing = false;
         }
 
         void Collapse() { if (note == null) HidePanel(); else ShowView(View.Pill); }
         void DropTarget() { if (target != null) { target.Dispose(); target = null; } }
         void DiscardCandidate() { if (candidate != null) { candidate.Dispose(); candidate = null; } }
-        void HidePanel() { DiscardCandidate(); view = View.Hidden; panel.Hide(); }
+        void HidePanel() { EndEdit(); DiscardCandidate(); view = View.Hidden; panel.Hide(); }
         void SetStatus(string message)
         {
             var label = Find<TextBlock>("Status");
@@ -204,8 +230,10 @@ namespace FocusMark
 
         void ShowView(View next)
         {
-            if (next != View.Editor) DiscardCandidate();
-            if (panel.IsVisible) panel.Hide();
+            if (next != View.Editor) { EndEdit(); DiscardCandidate(); }
+            // Hiding releases editor focus when collapsing. A visible passive capsule
+            // can become an editor in place without hiding and showing the HWND again.
+            if (next == View.Pill && panel.IsActive) panel.Hide();
             view = next;
             foreach (var item in new[] { View.Pill, View.Editor, View.Details })
                 Find<FrameworkElement>(item.ToString()).Visibility = item == next ? Visibility.Visible : Visibility.Collapsed;
@@ -217,7 +245,7 @@ namespace FocusMark
             int style = GetWindowLong(handle, -20);
             SetWindowLong(handle, -20, next == View.Pill ? style | 0x08000000 : style & ~0x08000000); // WS_EX_NOACTIVATE
             panel.UpdateLayout();
-            panel.Show();
+            if (!panel.IsVisible) panel.Show();
             Place();
         }
 
@@ -233,6 +261,7 @@ namespace FocusMark
             var work = screen.WorkingArea;
             int x = work.Left + Math.Max(0, (work.Width - (rect.Right - rect.Left)) / 2);
             int y = store.Current.Bottom ? Math.Max(work.Top, work.Bottom - (rect.Bottom - rect.Top) - 8) : work.Top + 8;
+            if (rect.Left == x && rect.Top == y) return;
             SetWindowPos(handle, IntPtr.Zero, x, y, 0, 0, 0x0015); // NOSIZE | NOZORDER | NOACTIVATE
         }
 

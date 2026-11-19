@@ -1,5 +1,5 @@
 # Run on an unlocked Windows desktop. Uses disposable profiles and moves focus/mouse.
-param([switch]$Ime, [string]$Code, [string]$Browser = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe")
+param([switch]$Ime, [ValidateRange(0,60)][int]$Cycles = 0, [string]$Code, [string]$Browser = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe")
 $ErrorActionPreference = 'Stop'
 if (!$Code) { $Code = Join-Path (Split-Path (Split-Path (Get-Command code.cmd).Source)) 'Code.exe' }
 if (!(Test-Path $Code) -or !(Test-Path $Browser)) { throw 'VS Code and Edge are required' }
@@ -10,6 +10,7 @@ using System;
 using System.Runtime.InteropServices;
 public static class Desktop {
  [DllImport("user32")] public static extern IntPtr GetForegroundWindow();
+ [DllImport("user32")] public static extern void SwitchToThisWindow(IntPtr h,bool altTab);
  [DllImport("user32")] public static extern bool SetForegroundWindow(IntPtr h);
  [DllImport("user32")] public static extern bool ShowWindowAsync(IntPtr h,int cmd);
  [DllImport("user32")] public static extern bool IsIconic(IntPtr h);
@@ -51,7 +52,8 @@ function WaitFor($name, [scriptblock]$check, $seconds = 8) {
 }
 function Handle($p) { $p.Refresh(); if ($p.MainWindowHandle -ne [IntPtr]::Zero) { $p.MainWindowHandle } }
 function Front($h) {
-    $null = [Desktop]::SetForegroundWindow($h)
+    # Only used for arranging the two disposable fixture windows.
+    if (![Desktop]::SetForegroundWindow($h)) { [Desktop]::SwitchToThisWindow($h,$true) }
     $null = WaitFor 'foreground switch' { [Desktop]::GetForegroundWindow() -eq $h } 2
 }
 function Key($h, [byte[]]$keys) {
@@ -137,6 +139,19 @@ try {
     Click 'Pill'; Click 'Return'
     $null = WaitFor 'restored foreground' { ![Desktop]::IsIconic($codeH) -and [Desktop]::GetForegroundWindow() -eq $codeH }
     Write-Output 'PASS saved edit preserves target, restores minimized VS Code'
+    $null = WaitFor 'collapsed after confirmed restore' { Item 'Pill' }
+    if ($Cycles -gt 0) {
+        $samples = @(); $app.Refresh(); $startMB = $app.WorkingSet64; $startHandles = $app.HandleCount
+        for ($i=0; $i -lt $Cycles; $i++) {
+            Front $edgeH
+            try { $measurement = EditorFrom $edgeH } catch { throw "Cycle $($i+1): $_" }
+            $samples += [int](($measurement -split '=')[1])
+            Key $panel @(27)
+            $null = WaitFor 'collapsed after Esc' { Item 'Pill' }
+        }
+        $sorted = @($samples | Sort-Object); $app.Refresh()
+        Write-Output ('cycles={0} hotkey_p50_ms={1} p95_ms={2} max_ms={3} working_set_before={4} after={5} handles_before={6} after={7}' -f $Cycles,$sorted[[int][Math]::Ceiling($Cycles*.50)-1],$sorted[[int][Math]::Ceiling($Cycles*.95)-1],$sorted[-1],$startMB,$app.WorkingSet64,$startHandles,$app.HandleCount)
+    }
     $app.Refresh(); $cpu = $app.TotalProcessorTime; $timer = [Diagnostics.Stopwatch]::StartNew()
     Start-Sleep -Seconds 10
     $app.Refresh(); Write-Output ('idle_wall_ms={0} cpu_ms={1} working_set_bytes={2}' -f $timer.ElapsedMilliseconds,($app.TotalProcessorTime-$cpu).TotalMilliseconds,$app.WorkingSet64)

@@ -8,6 +8,7 @@ namespace FocusMark
     [DataContract]
     internal sealed class Note
     {
+        internal const int Limit = 200;
         [DataMember(Name="text", IsRequired=true)] public string Text { get; private set; }
         [DataMember(Name="bottom", EmitDefaultValue=false)] public bool Bottom { get; private set; }
         [DataMember(Name="hidePreview", EmitDefaultValue=false)] public bool HidePreview { get; private set; }
@@ -34,7 +35,7 @@ namespace FocusMark
 
         internal static bool Valid(string value)
         {
-            return !String.IsNullOrWhiteSpace(value) && Length(value) <= 200;
+            return !String.IsNullOrWhiteSpace(value) && Length(value) <= Limit;
         }
     }
 
