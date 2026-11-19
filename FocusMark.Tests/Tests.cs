@@ -78,6 +78,23 @@ internal static class Tests
             Check(store.Load(out warning) == null && warning != null && File.ReadAllText(Directory.GetFiles(root, "*.damaged-*").Single()) == "{bad", "corrupt bytes quarantined");
             store.Save("final"); store.Clear();
             Check(store.Load(out warning) == null, "clear");
+            Directory.CreateDirectory(root);
+            File.WriteAllText(file, "{\"text\":\"legacy\"}");
+            Check(store.Load(out warning) == "legacy" && !store.Current.Bottom && !store.Current.HidePreview, "legacy note uses default options");
+            store.SetOptions(true, true);
+            var reopened = new NoteStore(root);
+            Check(reopened.Load(out warning) == "legacy" && reopened.Current.Bottom && reopened.Current.HidePreview, "options survive restart with note");
+            using (File.Open(file, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                try { store.SetOptions(false, false); throw new Exception("expected sharing violation"); } catch (IOException) { }
+                Check(store.Current.Bottom && store.Current.HidePreview && store.Current.Text == "legacy", "failed settings write preserves committed state");
+            }
+            store.Save("again");
+            Check(reopened.Load(out warning) == "again" && reopened.Current.Bottom && reopened.Current.HidePreview, "saving new text preserves settings");
+            store.Clear();
+            Check(reopened.Load(out warning) == null && warning == null && reopened.Current.HidePreview && reopened.Current.Bottom && !File.ReadAllText(file).Contains("again"), "clear removes text and preserves settings on restart");
+            store.SetOptions(false, false);
+            Check(!File.Exists(file) && !store.Current.HidePreview && !store.Current.Bottom, "empty state with default options removes file");
             Check(WindowTarget.Capture(IntPtr.Zero) == null, "missing foreground rejected");
             WindowIdentity();
         }

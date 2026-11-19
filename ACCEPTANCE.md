@@ -2,7 +2,15 @@
 
 **主闭环通过真实 Windows 桌面自动化验收。** 测试在 Windows 11 x64（10.0.26200.0）交互会话 1 中运行，由 WSL2 调用 Windows PowerShell。使用一个 125% 缩放的显示器、Windows Explorer 托盘、VS Code、Edge 及中文拼音输入法。人工使用体验和多显示器兼容性仍待验证。
 
-## 当前版本 · 重新关联与应用图标
+## 当前版本 · 托盘偏好与收起
+
+交付的 `dist/FocusMark.exe` 为 43,008 字节，SHA-256 为 `91289a8ce146ca60fd8991a5bdc74a3a394c2964032a51effc6938aee0d4a561`。在独立目录用 `build.ps1 -Test` 构建，19 项检查通过。新覆盖了旧版 JSON、设置与备注分别修改、文件被锁时的回滚、完成后保留偏好和恢复默认后的清理。
+
+原有 FocusMark 会话继续运行。桌面测试副本使用单独实例名、托盘标识和 Ctrl+Alt+K。`Desktop.ps1 -Ime` 在 Windows 11 上通过了返回原窗口、取消与确认重新关联、重启恢复和中文拼音组合输入。样本为首次唤出 242 ms、同一进程再次唤出 56–206 ms、空闲工作集 83,042,304 字节。
+
+`powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File .\FocusMark.Tests\Preferences.ps1` 使用临时数据启动 WPF 窗口。本轮对测试副本运行，实际菜单项的点击处理、折叠时隐藏和恢复文字、胶囊下边缘距工作区底部 8 物理像素、展开读全文与收起均通过。该检查直接调用菜单项。尝试通过 Explorer 托盘点击新选项时，自动化定位图标或菜单超时，完整物理点击流程仍待复验。最终分发 EXE 的完整桌面流程也待复验。
+
+## 上一版 · 重新关联与应用图标
 
 本次交付的 `dist/FocusMark.exe` 为 40,448 字节，SHA-256 为 `4343dd116b73cff530705b3736120a4770449b3fdd2d67e3713578fd97ee12b2`。使用交付源码在独立目录执行 `build.ps1 -Test`，13 项检查通过。Windows 图标文件包含 16–256 像素共八种尺寸，PE 文件含图标组资源，托盘从该资源加载图标。
 

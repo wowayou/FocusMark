@@ -26,7 +26,7 @@ namespace FocusMark
         Forms.Screen screen;
         WindowTarget target, candidate;
         CheckBox rebind;
-        string note;
+        string note { get { return store.Current.Text; } }
         bool composing, registered, exiting;
         enum View { Hidden, Editor, Pill, Details }
         View view;
@@ -50,7 +50,7 @@ namespace FocusMark
             base.OnStartup(e);
             System.Windows.Media.RenderOptions.ProcessRenderMode = RenderMode.SoftwareOnly;
             string warning;
-            note = store.Load(out warning); // Unexpected I/O errors abort startup before enabling writes.
+            store.Load(out warning);
             using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("Panel.xaml"))
                 panel = (Window)XamlReader.Load(stream);
             handle = new WindowInteropHelper(panel).EnsureHandle();
@@ -77,10 +77,11 @@ namespace FocusMark
                 Find<Button>("Return").IsEnabled = true;
                 if (message == null) ShowView(View.Pill); else SetStatus(message);
             };
+            Find<Button>("Fold").Click += delegate { Collapse(); };
             Find<Button>("Edit").Click += delegate { Edit(IntPtr.Zero); };
             Find<Button>("Done").Click += delegate {
-                if (!WriteNote(store.Clear)) return;
-                DropTarget(); note = null; HidePanel();
+                if (!TryCommit(store.Clear)) return;
+                DropTarget(); HidePanel();
             };
             panel.Closing += (s, a) => { if (!exiting) { a.Cancel = true; HidePanel(); } };
             panel.SizeChanged += delegate { if (panel.IsVisible) Place(); };
@@ -88,6 +89,18 @@ namespace FocusMark
             var menu = new Forms.ContextMenuStrip();
             menu.Items.Add("打开", null, delegate { Edit(IntPtr.Zero); });
             menu.Items.Add("隐藏", null, delegate { HidePanel(); });
+            var bottom = new Forms.ToolStripMenuItem("贴近屏幕底部") { Checked = store.Current.Bottom };
+            var mask = new Forms.ToolStripMenuItem("隐藏胶囊文字") { Checked = store.Current.HidePreview };
+            bottom.Click += delegate {
+                if (TryCommit(delegate { store.SetOptions(!store.Current.Bottom, store.Current.HidePreview); }))
+                { bottom.Checked = store.Current.Bottom; Place(); }
+            };
+            mask.Click += delegate {
+                if (TryCommit(delegate { store.SetOptions(store.Current.Bottom, !store.Current.HidePreview); }))
+                { mask.Checked = store.Current.HidePreview; UpdatePreview(); }
+            };
+            menu.Items.Add(bottom);
+            menu.Items.Add(mask);
             menu.Items.Add("退出", null, delegate { exiting = true; Shutdown(); });
             // csc /win32icon stores the application's icon group at resource 32512.
             var appIcon = LoadImage(Marshal.GetHINSTANCE(typeof(App).Module), new IntPtr(32512), 1, 0, 0, 0x8040); // LR_SHARED | LR_DEFAULTSIZE
@@ -146,22 +159,22 @@ namespace FocusMark
                 Alert("刚才的窗口已失效。可以保留原关联并保存文字。");
                 return;
             }
-            if (!Note.Valid(text) || !WriteNote(delegate { store.Save(text); })) return;
-            if (note == null || replace)
+            bool newNote = note == null;
+            if (!Note.Valid(text) || !TryCommit(delegate { store.Save(text); })) return;
+            if (newNote || replace)
             {
                 DropTarget();
                 target = candidate;
                 candidate = null;
             }
-            note = text;
             ShowView(View.Pill);
         }
 
-        bool WriteNote(Action write)
+        bool TryCommit(Action write)
         {
             try { write(); return true; }
-            catch (IOException e) { Alert("备注未更改。\n" + e.Message); }
-            catch (UnauthorizedAccessException e) { Alert("没有写入权限，备注未更改。\n" + e.Message); }
+            catch (IOException e) { Alert("更改未保存。\n" + e.Message); }
+            catch (UnauthorizedAccessException e) { Alert("没有写入权限，更改未保存。\n" + e.Message); }
             return false;
         }
 
@@ -183,6 +196,12 @@ namespace FocusMark
             label.Visibility = message == null ? Visibility.Collapsed : Visibility.Visible;
         }
 
+        void UpdatePreview()
+        {
+            Find<TextBlock>("Preview").Text = store.Current.HidePreview ? "查看备注" : note;
+            if (view == View.Pill) panel.Width = store.Current.HidePreview ? 100 : 216;
+        }
+
         void ShowView(View next)
         {
             if (next != View.Editor) DiscardCandidate();
@@ -190,10 +209,11 @@ namespace FocusMark
             view = next;
             foreach (var item in new[] { View.Pill, View.Editor, View.Details })
                 Find<FrameworkElement>(item.ToString()).Visibility = item == next ? Visibility.Visible : Visibility.Collapsed;
-            Find<TextBlock>("Preview").Text = Find<TextBlock>("FullNote").Text = note;
+            Find<TextBlock>("FullNote").Text = next == View.Details ? note : null;
+            UpdatePreview();
             SetStatus(target == null ? "本次会话没有关联窗口。" : null);
             Find<Button>("Return").IsEnabled = target != null;
-            panel.Width = next == View.Pill ? 216 : 360;
+            if (next != View.Pill) panel.Width = 360;
             int style = GetWindowLong(handle, -20);
             SetWindowLong(handle, -20, next == View.Pill ? style | 0x08000000 : style & ~0x08000000); // WS_EX_NOACTIVATE
             panel.UpdateLayout();
@@ -212,7 +232,8 @@ namespace FocusMark
             if (screen == null || !panel.IsVisible || !GetWindowRect(handle, out rect)) return;
             var work = screen.WorkingArea;
             int x = work.Left + Math.Max(0, (work.Width - (rect.Right - rect.Left)) / 2);
-            SetWindowPos(handle, IntPtr.Zero, x, work.Top + 8, 0, 0, 0x0015); // NOSIZE | NOZORDER | NOACTIVATE
+            int y = store.Current.Bottom ? Math.Max(work.Top, work.Bottom - (rect.Bottom - rect.Top) - 8) : work.Top + 8;
+            SetWindowPos(handle, IntPtr.Zero, x, y, 0, 0, 0x0015); // NOSIZE | NOZORDER | NOACTIVATE
         }
 
         protected override void OnExit(ExitEventArgs e)
